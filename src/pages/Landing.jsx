@@ -168,11 +168,11 @@ export default function Landing() {
         <section className="hero">
           <div className="hero-bg"></div>
           <div className="hero-eyebrow">● Reputação · Feedback · Fidelização</div>
-          <h1>Transforme clientes satisfeitos<br/>em <em>avaliações</em> reais</h1>
-          <p className="hero-sub">Transforme clientes satisfeitos em avaliações e recupere experiências negativas antes que elas prejudiquem sua reputação.</p>
+          <h1>Transforme feedback <br/>em <em>crescimento para</em> o seu negócio</h1>
+          <p className="hero-sub">Identifique clientes insatisfeitos antes que eles prejudiquem sua reputação, aumente suas avaliações online e descubra oportunidades de melhoria em tempo real.</p>
           <div className="hero-actions">
-            <a href="#precos" className="btn-primary">⚡ Testar 14 dias grátis</a>
-            <a href="#como-funciona" className="btn-ghost">Ver como funciona</a>
+            <a href="#precos" className="btn-primary">⚡ Começar gratuitamente</a>
+            <a href="#como-funciona" className="btn-ghost">Testar grátis por 14 dias</a>
           </div>
           <div className="hero-social">
             <div className="hero-avatars"><span>M</span><span>A</span><span>J</span><span>C</span></div>
