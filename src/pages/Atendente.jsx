@@ -86,7 +86,7 @@ export default function Atendente() {
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, color:C.text,
-      fontFamily:"'DM Sans',system-ui", maxWidth:480, margin:"0 auto", paddingBottom:40 }}>
+      fontFamily:"'DM Sans',system-ui", paddingBottom:40 }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet" />
 
       {/* Header */}
