@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Revora — Mais avaliações. Mais clientes.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --amber:#E8A020;
+  --amber-light:#F5C158;
+  --amber-dim:rgba(232,160,32,0.12);
+  --amber-border:rgba(232,160,32,0.25);
+  --ink:#0C0A08;
+  --ink2:#1A1712;
+  --ink3:#252219;
+  --cream:#FAF7F2;
+  --cream2:#F2EDE4;
+  --stone:#9B9488;
+  --stone2:#6B6358;
+  --white:#FFFFFF;
+  --red:#E05454;
+  --green:#2ECC71;
+}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Figtree',sans-serif;
+  background:var(--cream);
+  color:var(--ink);
+  overflow-x:hidden;
+}
+
+/* ── NOISE OVERLAY ── */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:999;opacity:0.4;
+}
+
+/* ── NAV ── */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 5vw;height:64px;
+  background:rgba(250,247,242,0.85);
+  backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(155,148,136,0.2);
+  transition:all 0.3s;
+}
+.nav-logo{
+  font-family:'Playfair Display',serif;
+  font-size:22px;font-weight:900;
+  color:var(--ink);letter-spacing:-0.5px;
+}
+.nav-logo span{color:var(--amber)}
+.nav-links{display:flex;align-items:center;gap:28px}
+.nav-links a{
+  font-size:13px;font-weight:500;color:var(--stone2);
+  text-decoration:none;transition:color 0.2s;letter-spacing:0.2px;
+}
+.nav-links a:hover{color:var(--ink)}
+.nav-cta{
+  background:var(--ink);color:var(--cream);
+  padding:9px 20px;border-radius:8px;
+  font-size:13px;font-weight:700;
+  text-decoration:none;transition:all 0.2s;
+  border:1.5px solid var(--ink);
+}
+.nav-cta:hover{background:var(--amber);border-color:var(--amber);color:var(--ink)}
+
+/* ── HERO ── */
+.hero{
+  min-height:100vh;
+  display:flex;flex-direction:column;
+  justify-content:center;align-items:center;
+  text-align:center;
+  padding:120px 5vw 80px;
+  position:relative;overflow:hidden;
+}
+.hero-bg{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(232,160,32,0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(232,160,32,0.08) 0%, transparent 50%);
+}
+.hero-eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--ink);color:var(--amber-light);
+  padding:6px 16px;border-radius:100px;
+  font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  margin-bottom:28px;
+  animation:fadeUp 0.6s ease both;
+}
+.hero-eyebrow::before{
+  content:'';width:6px;height:6px;border-radius:50%;
+  background:var(--amber);animation:pulse 2s ease infinite;
+}
+.hero h1{
+  font-family:'Playfair Display',serif;
+  font-size:clamp(44px,7vw,88px);
+  font-weight:900;line-height:1.05;
+  letter-spacing:-2px;color:var(--ink);
+  max-width:900px;margin:0 auto 24px;
+  animation:fadeUp 0.6s 0.1s ease both;
+}
+.hero h1 em{
+  font-style:italic;color:var(--amber);
+  position:relative;
+}
+.hero h1 em::after{
+  content:'';
+  position:absolute;bottom:-4px;left:0;right:0;height:3px;
+  background:var(--amber);border-radius:2px;
+  transform:scaleX(0);transform-origin:left;
+  animation:underline 0.6s 0.8s ease forwards;
+}
+.hero-sub{
+  font-size:clamp(16px,2vw,20px);color:var(--stone2);
+  font-weight:400;line-height:1.6;
+  max-width:560px;margin:0 auto 40px;
+  animation:fadeUp 0.6s 0.2s ease both;
+}
+.hero-actions{
+  display:flex;gap:14px;justify-content:center;flex-wrap:wrap;
+  animation:fadeUp 0.6s 0.3s ease both;
+}
+.btn-primary{
+  background:var(--amber);color:var(--ink);
+  padding:16px 32px;border-radius:10px;
+  font-size:15px;font-weight:800;
+  text-decoration:none;transition:all 0.2s;
+  border:2px solid var(--amber);
+  box-shadow:0 8px 32px rgba(232,160,32,0.35);
+  display:inline-flex;align-items:center;gap:8px;
+}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(232,160,32,0.5)}
+.btn-ghost{
+  background:transparent;color:var(--ink);
+  padding:16px 32px;border-radius:10px;
+  font-size:15px;font-weight:600;
+  text-decoration:none;transition:all 0.2s;
+  border:2px solid rgba(12,10,8,0.15);
+  display:inline-flex;align-items:center;gap:8px;
+}
+.btn-ghost:hover{border-color:var(--ink);background:var(--ink);color:var(--cream)}
+
+.hero-social{
+  display:flex;align-items:center;gap:12px;
+  margin-top:48px;font-size:12px;color:var(--stone);
+  animation:fadeUp 0.6s 0.4s ease both;
+}
+.hero-avatars{display:flex}
+.hero-avatars span{
+  width:30px;height:30px;border-radius:50%;
+  background:var(--ink);color:var(--amber);
+  font-size:12px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;
+  border:2px solid var(--cream);margin-left:-8px;
+}
+.hero-avatars span:first-child{margin-left:0}
+.stars-row{color:var(--amber);font-size:14px;letter-spacing:1px}
+
+/* ── TICKER ── */
+.ticker{
+  background:var(--ink);color:var(--cream2);
+  padding:14px 0;overflow:hidden;
+  border-top:1px solid rgba(255,255,255,0.05);
+}
+.ticker-inner{
+  display:flex;gap:0;
+  animation:ticker 20s linear infinite;
+  white-space:nowrap;
+}
+.ticker-item{
+  display:inline-flex;align-items:center;gap:12px;
+  padding:0 40px;font-size:13px;font-weight:500;
+  letter-spacing:0.3px;color:rgba(250,247,242,0.6);
+}
+.ticker-item strong{color:var(--amber);font-weight:700}
+.ticker-dot{width:4px;height:4px;border-radius:50%;background:var(--amber);opacity:0.5}
+
+/* ── SECTION COMMONS ── */
+section{padding:100px 5vw}
+.section-label{
+  font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:var(--amber);margin-bottom:16px;
+}
+.section-title{
+  font-family:'Playfair Display',serif;
+  font-size:clamp(32px,4vw,52px);
+  font-weight:900;line-height:1.1;letter-spacing:-1px;
+  color:var(--ink);margin-bottom:20px;
+}
+.section-sub{
+  font-size:17px;color:var(--stone2);
+  line-height:1.7;max-width:560px;
+}
+
+/* ── HOW IT WORKS ── */
+.how{background:var(--ink);color:var(--cream)}
+.how .section-title{color:var(--cream)}
+.how .section-sub{color:rgba(250,247,242,0.55)}
+.steps-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:2px;margin-top:60px;
+  background:rgba(255,255,255,0.04);
+  border-radius:16px;overflow:hidden;
+  border:1px solid rgba(255,255,255,0.06);
+}
+.step{
+  padding:36px 32px;
+  background:var(--ink2);
+  transition:background 0.2s;
+  position:relative;
+}
+.step:hover{background:var(--ink3)}
+.step-num{
+  font-family:'Playfair Display',serif;
+  font-size:56px;font-weight:900;
+  color:rgba(232,160,32,0.15);
+  line-height:1;margin-bottom:16px;
+}
+.step h3{
+  font-size:17px;font-weight:700;
+  color:var(--cream);margin-bottom:10px;
+}
+.step p{font-size:14px;color:rgba(250,247,242,0.5);line-height:1.6}
+.step-icon{
+  width:44px;height:44px;border-radius:10px;
+  background:var(--amber-dim);border:1px solid var(--amber-border);
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;margin-bottom:20px;
+}
+
+/* ── FEATURES ── */
+.features{background:var(--cream2)}
+.features-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  gap:16px;margin-top:56px;
+}
+.feature-card{
+  background:var(--cream);border:1.5px solid rgba(155,148,136,0.2);
+  border-radius:16px;padding:28px;
+  transition:all 0.2s;cursor:default;
+}
+.feature-card:hover{
+  border-color:var(--amber);
+  transform:translateY(-3px);
+  box-shadow:0 16px 40px rgba(232,160,32,0.12);
+}
+.feature-icon{font-size:28px;margin-bottom:16px}
+.feature-card h3{font-size:17px;font-weight:700;margin-bottom:8px;color:var(--ink)}
+.feature-card p{font-size:14px;color:var(--stone2);line-height:1.65}
+.feature-tag{
+  display:inline-block;margin-top:14px;
+  font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  color:var(--amber);background:var(--amber-dim);
+  padding:3px 10px;border-radius:100px;
+  border:1px solid var(--amber-border);
+}
+
+/* ── SOCIAL PROOF ── */
+.proof{background:var(--cream)}
+.reviews-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:16px;margin-top:56px;
+}
+.review-card{
+  background:var(--cream2);border:1.5px solid rgba(155,148,136,0.15);
+  border-radius:16px;padding:24px;
+}
+.review-stars{color:var(--amber);font-size:16px;letter-spacing:2px;margin-bottom:14px}
+.review-text{font-size:15px;color:var(--ink);line-height:1.65;font-style:italic;margin-bottom:18px}
+.review-author{display:flex;align-items:center;gap:10px}
+.review-avatar{
+  width:38px;height:38px;border-radius:50%;
+  background:var(--ink);color:var(--amber);
+  font-size:14px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.review-name{font-size:13px;font-weight:700;color:var(--ink)}
+.review-biz{font-size:11px;color:var(--stone);margin-top:2px}
+
+/* ── STATS BAR ── */
+.stats{
+  background:var(--amber);
+  padding:60px 5vw;
+}
+.stats-inner{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+  gap:32px;max-width:900px;margin:0 auto;text-align:center;
+}
+.stat-value{
+  font-family:'Playfair Display',serif;
+  font-size:clamp(36px,5vw,60px);
+  font-weight:900;color:var(--ink);
+  line-height:1;
+}
+.stat-label{font-size:13px;font-weight:600;color:rgba(12,10,8,0.6);margin-top:6px}
+
+/* ── PRICING ── */
+.pricing{background:var(--ink);color:var(--cream)}
+.pricing .section-title{color:var(--cream)}
+.pricing .section-sub{color:rgba(250,247,242,0.5)}
+.pricing-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:16px;margin-top:56px;max-width:800px;
+}
+.plan{
+  background:var(--ink2);border:1.5px solid rgba(255,255,255,0.06);
+  border-radius:18px;padding:32px;
+  transition:border-color 0.2s;
+}
+.plan:hover{border-color:rgba(232,160,32,0.4)}
+.plan.featured{
+  background:var(--amber);
+  border-color:var(--amber);
+}
+.plan-name{font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+  color:rgba(250,247,242,0.4);margin-bottom:8px}
+.plan.featured .plan-name{color:rgba(12,10,8,0.5)}
+.plan-price{
+  font-family:'Playfair Display',serif;
+  font-size:48px;font-weight:900;line-height:1;
+  color:var(--cream);margin-bottom:4px;
+}
+.plan.featured .plan-price{color:var(--ink)}
+.plan-period{font-size:13px;color:rgba(250,247,242,0.4);margin-bottom:24px}
+.plan.featured .plan-period{color:rgba(12,10,8,0.5)}
+.plan-features{list-style:none;margin-bottom:28px}
+.plan-features li{
+  display:flex;align-items:flex-start;gap:10px;
+  font-size:14px;color:rgba(250,247,242,0.7);
+  padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05);
+}
+.plan.featured .plan-features li{color:rgba(12,10,8,0.7);border-bottom-color:rgba(12,10,8,0.08)}
+.plan-features li::before{content:'✓';color:var(--amber);font-weight:700;font-size:13px;flex-shrink:0;margin-top:1px}
+.plan.featured .plan-features li::before{color:var(--ink)}
+.plan-btn{
+  display:block;width:100%;padding:13px;border-radius:9px;
+  font-size:14px;font-weight:800;text-align:center;
+  text-decoration:none;transition:all 0.2s;cursor:pointer;border:none;
+  background:rgba(255,255,255,0.08);color:var(--cream);
+}
+.plan.featured .plan-btn{background:var(--ink);color:var(--amber)}
+.plan-btn:hover{opacity:0.85;transform:translateY(-1px)}
+.plan-badge{
+  display:inline-block;background:var(--ink);color:var(--amber);
+  font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
+  padding:4px 12px;border-radius:100px;margin-bottom:16px;
+}
+
+/* ── FAQ ── */
+.faq{background:var(--cream2)}
+.faq-list{margin-top:48px;max-width:680px}
+.faq-item{
+  border-bottom:1.5px solid rgba(155,148,136,0.2);
+  padding:20px 0;cursor:pointer;
+}
+.faq-q{
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:16px;font-weight:700;color:var(--ink);
+}
+.faq-toggle{
+  width:28px;height:28px;border-radius:50%;
+  background:var(--amber-dim);border:1px solid var(--amber-border);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;color:var(--amber);flex-shrink:0;
+  transition:transform 0.2s;
+}
+.faq-a{
+  font-size:14px;color:var(--stone2);line-height:1.7;
+  margin-top:14px;display:none;
+}
+.faq-item.open .faq-a{display:block}
+.faq-item.open .faq-toggle{transform:rotate(45deg)}
+
+/* ── CTA FOOTER ── */
+.cta-section{
+  background:var(--ink);
+  padding:120px 5vw;text-align:center;
+  position:relative;overflow:hidden;
+}
+.cta-section::before{
+  content:'';position:absolute;
+  top:-200px;left:50%;transform:translateX(-50%);
+  width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle,rgba(232,160,32,0.12) 0%,transparent 70%);
+  pointer-events:none;
+}
+.cta-section .section-title{color:var(--cream);font-size:clamp(36px,5vw,64px)}
+.cta-section .section-sub{color:rgba(250,247,242,0.5);margin:0 auto 48px}
+.cta-flags{
+  display:flex;justify-content:center;gap:20px;
+  margin-top:48px;font-size:13px;color:rgba(250,247,242,0.4);
+}
+.cta-flag{display:flex;align-items:center;gap:6px}
+
+/* ── FOOTER ── */
+footer{
+  background:var(--ink);
+  border-top:1px solid rgba(255,255,255,0.06);
+  padding:32px 5vw;
+  display:flex;justify-content:space-between;align-items:center;
+  flex-wrap:wrap;gap:16px;
+}
+footer .logo{
+  font-family:'Playfair Display',serif;
+  font-size:18px;font-weight:900;color:var(--cream);
+}
+footer .logo span{color:var(--amber)}
+footer p{font-size:12px;color:rgba(250,247,242,0.3)}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(24px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes pulse{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:0.5;transform:scale(0.8)}
+}
+@keyframes underline{
+  to{transform:scaleX(1)}
+}
+@keyframes ticker{
+  from{transform:translateX(0)}
+  to{transform:translateX(-50%)}
+}
+
+/* ── SCROLL REVEAL ── */
+.reveal{opacity:0;transform:translateY(32px);transition:opacity 0.6s ease,transform 0.6s ease}
+.reveal.visible{opacity:1;transform:translateY(0)}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  .nav-links{display:none}
+  .pricing-grid{grid-template-columns:1fr}
+  .steps-grid{grid-template-columns:1fr;gap:1px}
+  footer{flex-direction:column;text-align:center}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">Re<span>v</span>ora</div>
+  <div class="nav-links">
+    <a href="#como-funciona">Como funciona</a>
+    <a href="#funcionalidades">Funcionalidades</a>
+    <a href="#precos">Preços</a>
+    <a href="#faq">FAQ</a>
+  </div>
+  <a href="#precos" class="nav-cta">Começar grátis →</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-eyebrow">● Reputação · Feedback · Fidelização</div>
+  <h1>Transforme clientes satisfeitos<br/>em <em>avaliações</em> reais</h1>
+  <p class="hero-sub">Transforme clientes satisfeitos em avaliações e recupere experiências negativas antes que elas prejudiquem sua reputação.</p>
+  <div class="hero-actions">
+    <a href="#precos" class="btn-primary">⚡ Testar 14 dias grátis</a>
+    <a href="#como-funciona" class="btn-ghost">Ver como funciona</a>
+  </div>
+  <div class="hero-social">
+    <div class="hero-avatars">
+      <span>M</span><span>A</span><span>J</span><span>C</span>
+    </div>
+    <div>
+      <div class="stars-row">★★★★★</div>
+      <div>+230 negócios já usam o Revora</div>
+    </div>
+  </div>
+</section>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-inner">
+    <span class="ticker-item"><strong>+230</strong> negócios ativos <span class="ticker-dot"></span></span>
+    <span class="ticker-item"><strong>+18.400</strong> avaliações geradas <span class="ticker-dot"></span></span>
+    <span class="ticker-item">🇧🇷 Brasil <span class="ticker-dot"></span></span>
+    <span class="ticker-item">🇵🇹 Portugal <span class="ticker-dot"></span></span>
+    <span class="ticker-item">🇮🇹 Itália <span class="ticker-dot"></span></span>
+    <span class="ticker-item"><strong>74%</strong> taxa de conversão média <span class="ticker-dot"></span></span>
+    <span class="ticker-item">Sem app · 100% WhatsApp <span class="ticker-dot"></span></span>
+    <!-- duplicate for loop -->
+    <span class="ticker-item"><strong>+230</strong> negócios ativos <span class="ticker-dot"></span></span>
+    <span class="ticker-item"><strong>+18.400</strong> avaliações geradas <span class="ticker-dot"></span></span>
+    <span class="ticker-item">🇧🇷 Brasil <span class="ticker-dot"></span></span>
+    <span class="ticker-item">🇵🇹 Portugal <span class="ticker-dot"></span></span>
+    <span class="ticker-item">🇮🇹 Itália <span class="ticker-dot"></span></span>
+    <span class="ticker-item"><strong>74%</strong> taxa de conversão média <span class="ticker-dot"></span></span>
+    <span class="ticker-item">Sem app · 100% WhatsApp <span class="ticker-dot"></span></span>
+  </div>
+</div>
+
+<!-- HOW IT WORKS -->
+<section class="how" id="como-funciona">
+  <div class="reveal">
+    <div class="section-label">Como funciona</div>
+    <div class="section-title">3 passos.<br/>Resultado imediato.</div>
+    <p class="section-sub">Sem integrações complexas. Sem treinamento. Uma plataforma simples que cuida da sua reputação enquanto você foca no atendimento.</p>
+  </div>
+  <div class="steps-grid reveal">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-icon">👤</div>
+      <h3>Atendente cadastra o cliente</h3>
+      <p>Nome e WhatsApp em menos de 10 segundos. Funciona em qualquer celular, sem app.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-icon">✓</div>
+      <h3>Clica em "Finalizar"</h3>
+      <p>O Revora envia automaticamente uma mensagem pedindo a nota de 1 a 5 estrelas.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-icon">⭐</div>
+      <h3>Cliente avalia e recebe o cupom</h3>
+      <p>Clientes satisfeitos recebem o link do Google e um cupom de desconto. Experiências negativas geram alertas privados para você agir rapidamente.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <div class="step-icon">📈</div>
+      <h3>Você vê tudo no painel</h3>
+      <p>Avaliações geradas, cupons enviados, conversão e alertas de clientes insatisfeitos.</p>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features" id="funcionalidades">
+  <div class="reveal">
+    <div class="section-label">Funcionalidades</div>
+    <div class="section-title">Tudo que você precisa.<br/>Nada que você não usa.</div>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card reveal">
+      <div class="feature-icon">⭐</div>
+      <h3>Avaliações no Google automáticas</h3>
+      <p>Link direto para a página de avaliação do seu negócio. Cliente avalia em 30 segundos sem sair do WhatsApp.</p>
+      <span class="feature-tag">Core</span>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">🎁</div>
+      <h3>Cupom de fidelização</h3>
+      <p>Após avaliar, cliente recebe automaticamente um cupom de desconto personalizado. Ele volta — e você sabe quando.</p>
+      <span class="feature-tag">Fidelização</span>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">⚠️</div>
+      <h3>Recuperação de experiências negativas</h3>
+      <p>Quando um cliente não ficou satisfeito, o Revora detecta e alerta você em tempo real — para resolver antes que se torne um problema público.</p>
+      <span class="feature-tag">Proteção</span>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">📊</div>
+      <h3>Painel do dono</h3>
+      <p>Métricas em tempo real: avaliações geradas, cupons enviados, conversão e histórico completo de clientes.</p>
+      <span class="feature-tag">Gestão</span>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">🔧</div>
+      <h3>Funciona para qualquer negócio</h3>
+      <p>Salão, barbearia, restaurante, oficina, petshop, loja de carros. Configure o segmento e pronto.</p>
+      <span class="feature-tag">Flexível</span>
+    </div>
+    <div class="feature-card reveal">
+      <div class="feature-icon">🌍</div>
+      <h3>Brasil, Portugal e Itália</h3>
+      <p>Mesmo produto, 3 mercados. As mensagens são enviadas no idioma certo para cada país — sem configuração extra.</p>
+      <span class="feature-tag">Multi-país</span>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stats reveal">
+  <div class="stats-inner">
+    <div>
+      <div class="stat-value">74%</div>
+      <div class="stat-label">Taxa de conversão média</div>
+    </div>
+    <div>
+      <div class="stat-value">+18k</div>
+      <div class="stat-label">Avaliações geradas</div>
+    </div>
+    <div>
+      <div class="stat-value">3x</div>
+      <div class="stat-label">Mais avaliações em 30 dias</div>
+    </div>
+    <div>
+      <div class="stat-value">1</div>
+      <div class="stat-label">Clique para disparar</div>
+    </div>
+  </div>
+</div>
+
+<!-- SOCIAL PROOF -->
+<section class="proof">
+  <div class="reveal">
+    <div class="section-label">Depoimentos</div>
+    <div class="section-title">Negócios que já<br/><em style="font-style:italic;color:var(--amber)">crescem</em> com Revora</div>
+  </div>
+  <div class="reviews-grid">
+    <div class="review-card reveal">
+      <div class="review-stars">★★★★★</div>
+      <p class="review-text">"Em 2 semanas saímos de 47 para 89 avaliações no Google. Minha nota subiu de 4.1 para 4.7. Clientela nova chegando todo dia citando as avaliações."</p>
+      <div class="review-author">
+        <div class="review-avatar">M</div>
+        <div>
+          <div class="review-name">Mariana Costa</div>
+          <div class="review-biz">✂️ Salão M.Costa — São Paulo 🇧🇷</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card reveal">
+      <div class="review-stars">★★★★★</div>
+      <p class="review-text">"Antes eu tinha que ficar pedindo avaliação na cara dura. Agora é automático e ainda tenho um painel que me avisa quando alguém ficou insatisfeito. Genial."</p>
+      <div class="review-author">
+        <div class="review-avatar">R</div>
+        <div>
+          <div class="review-name">Rui Figueiredo</div>
+          <div class="review-biz">🔧 Auto Figueiredo — Lisboa 🇵🇹</div>
+        </div>
+      </div>
+    </div>
+    <div class="review-card reveal">
+      <div class="review-stars">★★★★★</div>
+      <p class="review-text">"Il sistema è semplicissimo. Il mio staff fa un clic e basta. Le recensioni sono aumentate del 200% in un mese. Consiglio a tutti."</p>
+      <div class="review-author">
+        <div class="review-avatar">G</div>
+        <div>
+          <div class="review-name">Giuseppe Romano</div>
+          <div class="review-biz">🍕 Pizzeria Romano — Milano 🇮🇹</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="precos">
+  <div class="reveal">
+    <div class="section-label">Preços</div>
+    <div class="section-title">Simples.<br/>Sem surpresas.</div>
+    <p class="section-sub">14 dias grátis em qualquer plano. Cancele quando quiser.</p>
+  </div>
+  <div class="pricing-grid reveal">
+    <div class="plan">
+      <div class="plan-name">Starter</div>
+      <div class="plan-price">R$97</div>
+      <div class="plan-period">por mês · até 100 envios</div>
+      <ul class="plan-features">
+        <li>Envio automático pós-atendimento</li>
+        <li>Filtro de nota baixa</li>
+        <li>Cupom de fidelização</li>
+        <li>Painel básico</li>
+        <li>1 usuário atendente</li>
+      </ul>
+      <a href="#" class="plan-btn">Começar grátis</a>
+    </div>
+    <div class="plan featured">
+      <div class="plan-badge">Mais popular</div>
+      <div class="plan-name">Pro</div>
+      <div class="plan-price">R$197</div>
+      <div class="plan-period">por mês · envios ilimitados</div>
+      <ul class="plan-features">
+        <li>Tudo do Starter</li>
+        <li>Envios ilimitados</li>
+        <li>Múltiplos atendentes</li>
+        <li>Dashboard completo com métricas</li>
+        <li>Alertas de notas baixas</li>
+        <li>Suporte prioritário</li>
+      </ul>
+      <a href="#" class="plan-btn">Começar grátis</a>
+    </div>
+  </div>
+  <p style="margin-top:24px;font-size:13px;color:rgba(250,247,242,0.3);text-align:left;max-width:800px">
+    Preços em BRL. Portugal e Itália: €29/mês Starter · €59/mês Pro. Sem taxa de setup. Sem contrato.
+  </p>
+</section>
+
+<!-- FAQ -->
+<section class="faq" id="faq">
+  <div class="reveal">
+    <div class="section-label">Dúvidas</div>
+    <div class="section-title">Perguntas frequentes</div>
+  </div>
+  <div class="faq-list reveal">
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">Precisa instalar algum app? <div class="faq-toggle">+</div></div>
+      <div class="faq-a">Não. O Revora funciona 100% no navegador — funciona em qualquer celular, iPhone ou Android, sem precisar baixar nada. O cliente recebe no WhatsApp normalmente.</div>
+    </div>
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">Funciona com qual WhatsApp? <div class="faq-toggle">+</div></div>
+      <div class="faq-a">O MVP usa Telegram para validação (gratuito e sem burocracia). A versão Pro usa WhatsApp Business API oficial. Você escolhe na configuração.</div>
+    </div>
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">Como funciona a recuperação de experiências negativas? <div class="faq-toggle">+</div></div>
+      <div class="faq-a">Quando um cliente indica que a experiência não foi positiva, o Revora notifica você imediatamente no painel. Assim você pode entrar em contato, resolver a situação e transformar um cliente insatisfeito em fidelizado — antes que o problema escale.</div>
+    </div>
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">Funciona para qualquer tipo de negócio? <div class="faq-toggle">+</div></div>
+      <div class="faq-a">Sim. Salão, barbearia, restaurante, oficina, petshop, loja de carros, clínica, academia, farmácia — qualquer negócio que atenda clientes e queira mais avaliações no Google.</div>
+    </div>
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">Posso cancelar quando quiser? <div class="faq-toggle">+</div></div>
+      <div class="faq-a">Sim. Sem contrato, sem fidelidade. Cancele quando quiser diretamente pelo painel. Os dados ficam disponíveis por 30 dias após o cancelamento.</div>
+    </div>
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">Funciona em Portugal e Itália? <div class="faq-toggle">+</div></div>
+      <div class="faq-a">Sim. O produto é o mesmo nos 3 países — Brasil, Portugal e Itália. As mensagens são enviadas no idioma correto automaticamente conforme a configuração da empresa.</div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="reveal">
+    <div class="section-label" style="color:var(--amber)">Comece hoje</div>
+    <div class="section-title">Fortaleça sua presença<br/>no Google hoje.</div>
+    <p class="section-sub">Colete feedback, acompanhe a satisfação dos seus clientes e fortaleça sua presença no Google com uma plataforma simples e automatizada.</p>
+    <div class="hero-actions" style="justify-content:center">
+      <a href="#" class="btn-primary" style="font-size:16px;padding:18px 36px">⚡ Começar 14 dias grátis</a>
+    </div>
+    <div class="cta-flags">
+      <div class="cta-flag">🇧🇷 Brasil</div>
+      <div class="cta-flag">·</div>
+      <div class="cta-flag">🇵🇹 Portugal</div>
+      <div class="cta-flag">·</div>
+      <div class="cta-flag">🇮🇹 Itália</div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="logo">Re<span>v</span>ora</div>
+  <p>© 2025 Revora. Todos os direitos reservados.</p>
+  <p style="color:rgba(250,247,242,0.2);font-size:11px">Feito para negócios que querem crescer.</p>
+</footer>
+
+<script>
+// Scroll reveal
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      // stagger children
+      e.target.querySelectorAll('.feature-card,.review-card,.step,.plan').forEach((child,i) => {
+        child.style.transitionDelay = `${i*0.08}s`;
+        child.style.opacity='1';
+        child.style.transform='translateY(0)';
+      });
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.reveal').forEach(el => {
+  observer.observe(el);
+  // also init children
+  el.querySelectorAll('.feature-card,.review-card,.step,.plan').forEach(child => {
+    child.style.opacity='0';
+    child.style.transform='translateY(20px)';
+    child.style.transition='opacity 0.5s ease, transform 0.5s ease';
+  });
+});
+
+// Nav scroll effect
+window.addEventListener('scroll', () => {
+  document.querySelector('nav').style.boxShadow =
+    window.scrollY > 20 ? '0 4px 24px rgba(12,10,8,0.08)' : 'none';
+});
+</script>
+</body>
+</html>
