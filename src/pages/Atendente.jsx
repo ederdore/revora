@@ -55,6 +55,7 @@ export default function Atendente() {
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(null)
+  const [linkClient, setLinkClient] = useState(null)
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -98,7 +99,7 @@ export default function Atendente() {
     const { error } = await supabase.from('clients').update({ status: 'msg_enviada' }).eq('id', client.id)
     if (!error) {
       setClients(prev => prev.map(c => c.id === client.id ? { ...c, status: 'msg_enviada' } : c))
-      showToast(`Mensagem enviada para ${client.name.split(' ')[0]}! 🚀`)
+      setLinkClient(client)
     }
     setSending(null)
   }
@@ -277,6 +278,48 @@ export default function Atendente() {
         </div>
       </div>
 
+
+      {/* LINK / QR MODAL */}
+      {linkClient && business && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,10,8,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(4px)', padding: 16 }}>
+          <div style={{ background: C.white, borderRadius: 20, padding: 32, width: '100%', maxWidth: 400, boxShadow: '0 24px 60px rgba(12,10,8,0.2)', textAlign: 'center' }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>📲</div>
+            <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 20, fontWeight: 900, marginBottom: 6 }}>
+              Mostre para {linkClient.name.split(' ')[0]}
+            </h3>
+            <p style={{ fontSize: 13, color: C.stone2, marginBottom: 24 }}>
+              Cliente escaneia o QR Code ou acessa o link para avaliar
+            </p>
+
+            {/* QR Code */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.origin}/avaliar/${linkClient.id}`)}&bgcolor=FAF7F2&color=0C0A08&qzone=1`}
+                alt="QR Avaliação"
+                style={{ borderRadius: 12, border: `1.5px solid rgba(155,148,136,0.2)` }}
+              />
+            </div>
+
+            <div style={{ fontSize: 11, color: C.stone, marginBottom: 20 }}>
+              ou copie o link abaixo
+            </div>
+
+            <div style={{ background: C.cream2, border: `1.5px solid rgba(155,148,136,0.2)`, borderRadius: 9, padding: '10px 14px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, color: C.stone2, flex: 1, wordBreak: 'break-all', textAlign: 'left' }}>
+                {window.location.origin}/avaliar/{linkClient.id}
+              </span>
+              <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/avaliar/${linkClient.id}`); showToast('Link copiado!') }}
+                style={{ padding: '5px 10px', borderRadius: 6, border: `1px solid rgba(155,148,136,0.2)`, background: C.white, color: C.ink, fontSize: 11, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+                Copiar
+              </button>
+            </div>
+
+            <button onClick={() => setLinkClient(null)} style={{ width: '100%', padding: '12px', borderRadius: 9, border: `1.5px solid rgba(155,148,136,0.2)`, background: C.cream, color: C.stone2, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
       {/* ADD CLIENT MODAL */}
       {showForm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,10,8,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(4px)', padding: 16 }}>
