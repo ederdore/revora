@@ -76,6 +76,7 @@ export default function Admin() {
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('hoje')
+  const [showQR, setShowQR] = useState(false)
 
   useEffect(() => { loadData() }, [])
 
@@ -146,6 +147,9 @@ export default function Admin() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={() => setShowQR(true)} style={{ padding: '8px 14px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.white, color: C.ink, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            📲 QR Code
+          </button>
           <a href="/atendente" style={{
             padding: '8px 18px', borderRadius: 8,
             background: C.amber, color: C.ink,
@@ -338,6 +342,72 @@ export default function Admin() {
         </div>
       </div>
 
+
+      {/* QR CODE MODAL */}
+      {showQR && business && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,10,8,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(4px)', padding: 16 }}>
+          <div style={{ background: C.white, borderRadius: 20, padding: 32, width: '100%', maxWidth: 440, boxShadow: '0 24px 60px rgba(12,10,8,0.2)' }}>
+            <h3 style={{ fontFamily: "'Playfair Display',serif", fontSize: 22, fontWeight: 900, marginBottom: 6 }}>QR Code & Links</h3>
+            <p style={{ fontSize: 13, color: C.stone2, marginBottom: 24 }}>Compartilhe ou imprima para o balcão</p>
+
+            {/* Google Review QR */}
+            <div style={{ background: C.cream, border: `1.5px solid ${C.border}`, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>⭐ QR Code — Avaliação Google</div>
+              <div style={{ fontSize: 12, color: C.stone2, marginBottom: 16 }}>Cliente escaneia e já abre direto na página de avaliação</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(business.google_link)}&bgcolor=FAF7F2&color=0C0A08&qzone=1`}
+                  alt="QR Google"
+                  style={{ borderRadius: 10, border: `1.5px solid ${C.border}` }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <a href={business.google_link} target="_blank" style={{ flex: 1, padding: '9px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.white, color: C.ink, fontSize: 12, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}>
+                  🔗 Abrir link
+                </a>
+                <a href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(business.google_link)}&bgcolor=FAF7F2&color=0C0A08&qzone=2`} target="_blank" download style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: C.amber, color: C.ink, fontSize: 12, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}>
+                  ⬇️ Baixar QR
+                </a>
+              </div>
+            </div>
+
+            {/* WhatsApp wa.me */}
+            <div style={{ background: C.cream, border: `1.5px solid ${C.border}`, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>💬 QR Code — WhatsApp</div>
+              <div style={{ fontSize: 12, color: C.stone2, marginBottom: 12 }}>Cliente escaneia e abre conversa no WhatsApp</div>
+              {business.whatsapp_number ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(`https://wa.me/55${business.whatsapp_number.replace(/\D/g,'')}?text=${encodeURIComponent('Olá! Gostaria de avaliar minha experiência 😊')}`)}&bgcolor=FAF7F2&color=0C0A08&qzone=1`}
+                      alt="QR WhatsApp"
+                      style={{ borderRadius: 10, border: `1.5px solid ${C.border}` }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <a href={`https://wa.me/55${business.whatsapp_number.replace(/\D/g,'')}?text=${encodeURIComponent('Olá! Gostaria de avaliar minha experiência 😊')}`} target="_blank"
+                      style={{ flex: 1, padding: '9px', borderRadius: 8, border: `1.5px solid ${C.border}`, background: C.white, color: C.ink, fontSize: 12, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}>
+                      🔗 Testar link
+                    </a>
+                    <a href={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(`https://wa.me/55${business.whatsapp_number.replace(/\D/g,'')}?text=${encodeURIComponent('Olá! Gostaria de avaliar minha experiência 😊')}`)}&bgcolor=FAF7F2&color=0C0A08&qzone=2`} target="_blank"
+                      style={{ flex: 1, padding: '9px', borderRadius: 8, border: 'none', background: '#25D366', color: C.white, fontSize: 12, fontWeight: 700, textDecoration: 'none', textAlign: 'center' }}>
+                      ⬇️ Baixar QR
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: '12px', borderRadius: 8, background: C.amberDim, border: `1px solid ${C.amberBorder}`, fontSize: 12, color: C.stone2, textAlign: 'center' }}>
+                  ⚠️ Adicione o número do WhatsApp nas configurações para gerar este QR Code
+                </div>
+              )}
+            </div>
+
+            <button onClick={() => setShowQR(false)} style={{ width: '100%', padding: '12px', borderRadius: 9, border: `1.5px solid ${C.border}`, background: C.cream, color: C.stone2, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
       {/* CONFIG MODAL */}
       {editing && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,10,8,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(4px)', padding: 16 }}>
@@ -351,6 +421,7 @@ export default function Admin() {
               { label: 'Código do cupom', key: 'coupon_code', placeholder: 'VOLTA10' },
               { label: 'Desconto', key: 'coupon_discount', placeholder: '10%' },
               { label: 'Validade', key: 'coupon_expiry', placeholder: '30 dias' },
+              { label: '📱 WhatsApp (com DDD)', key: 'whatsapp_number', placeholder: '11999990000' },
             ].map(f => (
               <div key={f.key} style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: C.stone, textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 6 }}>{f.label}</label>
