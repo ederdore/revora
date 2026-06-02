@@ -6,6 +6,8 @@ import Admin from './pages/Admin.jsx'
 import Atendente from './pages/Atendente.jsx'
 import BackOffice from './pages/BackOffice.jsx'
 import Avaliar from './pages/Avaliar.jsx'
+import SegmentLanding from './pages/SegmentLanding.jsx'
+import Cadastro from './pages/Cadastro.jsx'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -16,6 +18,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="/atendente" element={<Atendente />} />
         <Route path="/gestao" element={<BackOffice />} />
         <Route path="/avaliar/:id" element={<Avaliar />} />
+        <Route path="/cadastro" element={<Cadastro />} />
+        <Route path="/:segment" element={<SegmentLanding />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </BrowserRouter>
