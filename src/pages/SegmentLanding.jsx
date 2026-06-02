@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 // ─────────────────────────────────────────────
 // PALETA AUNOR
@@ -170,8 +170,9 @@ const SEGMENTS = {
 // LANDING PAGE COMPONENT
 // ─────────────────────────────────────────────
 export default function SegmentLanding() {
-  const { segment } = useParams()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const segment = pathname.replace('/', '')
   const s = SEGMENTS[segment]
 
   if (!s) {
