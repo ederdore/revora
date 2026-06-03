@@ -1,325 +1,233 @@
-export default function Landing() {
-  return (
-    <>
+import { useNavigate } from 'react-router-dom'
+
+const C = {
+  black:'#0A0A0A',black2:'#111111',black3:'#1A1A1A',
+  blue:'#1B4FD8',blueDim:'rgba(27,79,216,0.12)',
+  yellow:'#F5C518',yellowDim:'rgba(245,197,24,0.10)',
+  white:'#FFFFFF',muted:'#888888',muted2:'#555555',
+  border:'rgba(255,255,255,0.08)',border2:'rgba(255,255,255,0.14)',
+}
+const FONTS=`@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');`
+const SEGMENTS=[
+  {slug:'barbearia',emoji:'✂️',label:'Barbearia',desc:'Recorrência 15–30 dias'},
+  {slug:'petshop',emoji:'🐾',label:'Pet Shop',desc:'Banho, tosa, consultas'},
+  {slug:'clinica',emoji:'🏥',label:'Clínica',desc:'Saúde e bem-estar'},
+  {slug:'lojas',emoji:'🛍️',label:'Loja',desc:'Varejo e serviços'},
+  {slug:'concessionarias',emoji:'🚗',label:'Concessionária',desc:'Revisões e pós-venda'},
+]
+
+export default function Landing(){
+  return(
+    <div style={{background:C.black,color:C.white,fontFamily:"'DM Sans',sans-serif",minHeight:'100vh',overflowX:'hidden'}}>
+      <style>{FONTS}</style>
       <style>{`
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        :root{
-          --amber:#E8A020;--amber-light:#F5C158;--amber-dim:rgba(232,160,32,0.12);
-          --amber-border:rgba(232,160,32,0.25);--ink:#0C0A08;--ink2:#1A1712;--ink3:#252219;
-          --cream:#FAF7F2;--cream2:#F2EDE4;--stone:#9B9488;--stone2:#6B6358;
-        }
         html{scroll-behavior:smooth}
-        .lp-body{font-family:'Figtree',sans-serif;background:var(--cream);color:var(--ink);overflow-x:hidden}
-        nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;
-          justify-content:space-between;padding:0 5vw;height:64px;
-          background:rgba(250,247,242,0.9);backdrop-filter:blur(12px);
-          border-bottom:1px solid rgba(155,148,136,0.2)}
-        .nav-logo{font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:var(--ink)}
-        .nav-logo span{color:var(--amber)}
-        .nav-links{display:flex;align-items:center;gap:28px}
-        .nav-links a{font-size:13px;font-weight:500;color:var(--stone2);text-decoration:none;transition:color 0.2s}
-        .nav-links a:hover{color:var(--ink)}
-        .nav-cta{background:var(--ink);color:var(--cream);padding:9px 20px;border-radius:8px;
-          font-size:13px;font-weight:700;text-decoration:none;transition:all 0.2s;border:1.5px solid var(--ink)}
-        .nav-cta:hover{background:var(--amber);border-color:var(--amber);color:var(--ink)}
-        .hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;
-          align-items:center;text-align:center;padding:120px 5vw 80px;position:relative;overflow:hidden}
-        .hero-bg{position:absolute;inset:0;background:
-          radial-gradient(ellipse 80% 60% at 50% -10%,rgba(232,160,32,0.15) 0%,transparent 60%),
-          radial-gradient(ellipse 50% 40% at 80% 80%,rgba(232,160,32,0.08) 0%,transparent 50%)}
-        .hero-eyebrow{display:inline-flex;align-items:center;gap:8px;background:var(--ink);
-          color:var(--amber-light);padding:6px 16px;border-radius:100px;font-size:11px;
-          font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:28px}
-        .hero h1{font-family:'Playfair Display',serif;font-size:clamp(44px,7vw,88px);font-weight:900;
-          line-height:1.05;letter-spacing:-2px;color:var(--ink);max-width:900px;margin:0 auto 24px}
-        .hero h1 em{font-style:italic;color:var(--amber)}
-        .hero-sub{font-size:clamp(16px,2vw,20px);color:var(--stone2);font-weight:400;line-height:1.6;
-          max-width:560px;margin:0 auto 40px}
-        .hero-actions{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
-        .btn-primary{background:var(--amber);color:var(--ink);padding:16px 32px;border-radius:10px;
-          font-size:15px;font-weight:800;text-decoration:none;transition:all 0.2s;border:2px solid var(--amber);
-          box-shadow:0 8px 32px rgba(232,160,32,0.35);display:inline-flex;align-items:center;gap:8px}
-        .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(232,160,32,0.5)}
-        .btn-ghost{background:transparent;color:var(--ink);padding:16px 32px;border-radius:10px;
-          font-size:15px;font-weight:600;text-decoration:none;transition:all 0.2s;
-          border:2px solid rgba(12,10,8,0.15);display:inline-flex;align-items:center;gap:8px}
-        .btn-ghost:hover{border-color:var(--ink);background:var(--ink);color:var(--cream)}
-        .hero-social{display:flex;align-items:center;gap:12px;margin-top:48px;font-size:12px;color:var(--stone)}
-        .hero-avatars{display:flex}
-        .hero-avatars span{width:30px;height:30px;border-radius:50%;background:var(--ink);color:var(--amber);
-          font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;
-          border:2px solid var(--cream);margin-left:-8px}
-        .hero-avatars span:first-child{margin-left:0}
-        .stars-row{color:var(--amber);font-size:14px;letter-spacing:1px}
-        .ticker{background:var(--ink);color:var(--cream2);padding:14px 0;overflow:hidden}
-        .ticker-inner{display:flex;animation:ticker 24s linear infinite;white-space:nowrap}
-        .ticker-item{display:inline-flex;align-items:center;gap:12px;padding:0 40px;
-          font-size:13px;font-weight:500;color:rgba(250,247,242,0.6)}
-        .ticker-item strong{color:var(--amber);font-weight:700}
-        .ticker-dot{width:4px;height:4px;border-radius:50%;background:var(--amber);opacity:0.5}
-        section{padding:100px 5vw}
-        .section-label{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
-          color:var(--amber);margin-bottom:16px}
-        .section-title{font-family:'Playfair Display',serif;font-size:clamp(32px,4vw,52px);
-          font-weight:900;line-height:1.1;letter-spacing:-1px;color:var(--ink);margin-bottom:20px}
-        .section-sub{font-size:17px;color:var(--stone2);line-height:1.7;max-width:560px}
-        .how{background:var(--ink);color:var(--cream)}
-        .how .section-title{color:var(--cream)}
-        .how .section-sub{color:rgba(250,247,242,0.55)}
-        .steps-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:2px;
-          margin-top:60px;background:rgba(255,255,255,0.04);border-radius:16px;overflow:hidden;
-          border:1px solid rgba(255,255,255,0.06)}
-        .step{padding:36px 32px;background:var(--ink2);transition:background 0.2s}
-        .step:hover{background:var(--ink3)}
-        .step-num{font-family:'Playfair Display',serif;font-size:56px;font-weight:900;
-          color:rgba(232,160,32,0.15);line-height:1;margin-bottom:16px}
-        .step h3{font-size:17px;font-weight:700;color:var(--cream);margin-bottom:10px}
-        .step p{font-size:14px;color:rgba(250,247,242,0.5);line-height:1.6}
-        .step-icon{width:44px;height:44px;border-radius:10px;background:var(--amber-dim);
-          border:1px solid var(--amber-border);display:flex;align-items:center;justify-content:center;
-          font-size:20px;margin-bottom:20px}
-        .features{background:var(--cream2)}
-        .features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:56px}
-        .feature-card{background:var(--cream);border:1.5px solid rgba(155,148,136,0.2);
-          border-radius:16px;padding:28px;transition:all 0.2s}
-        .feature-card:hover{border-color:var(--amber);transform:translateY(-3px);
-          box-shadow:0 16px 40px rgba(232,160,32,0.12)}
-        .feature-icon{font-size:28px;margin-bottom:16px}
-        .feature-card h3{font-size:17px;font-weight:700;margin-bottom:8px;color:var(--ink)}
-        .feature-card p{font-size:14px;color:var(--stone2);line-height:1.65}
-        .feature-tag{display:inline-block;margin-top:14px;font-size:10px;font-weight:700;
-          letter-spacing:1px;text-transform:uppercase;color:var(--amber);background:var(--amber-dim);
-          padding:3px 10px;border-radius:100px;border:1px solid var(--amber-border)}
-        .stats{background:var(--amber);padding:60px 5vw}
-        .stats-inner{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-          gap:32px;max-width:900px;margin:0 auto;text-align:center}
-        .stat-value{font-family:'Playfair Display',serif;font-size:clamp(36px,5vw,60px);
-          font-weight:900;color:var(--ink);line-height:1}
-        .stat-label{font-size:13px;font-weight:600;color:rgba(12,10,8,0.6);margin-top:6px}
-        .proof{background:var(--cream)}
-        .reviews-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:56px}
-        .review-card{background:var(--cream2);border:1.5px solid rgba(155,148,136,0.15);border-radius:16px;padding:24px}
-        .review-stars{color:var(--amber);font-size:16px;letter-spacing:2px;margin-bottom:14px}
-        .review-text{font-size:15px;color:var(--ink);line-height:1.65;font-style:italic;margin-bottom:18px}
-        .review-author{display:flex;align-items:center;gap:10px}
-        .review-avatar{width:38px;height:38px;border-radius:50%;background:var(--ink);color:var(--amber);
-          font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-        .review-name{font-size:13px;font-weight:700;color:var(--ink)}
-        .review-biz{font-size:11px;color:var(--stone);margin-top:2px}
-        .pricing{background:var(--ink);color:var(--cream)}
-        .pricing .section-title{color:var(--cream)}
-        .pricing .section-sub{color:rgba(250,247,242,0.5)}
-        .pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:56px;max-width:800px}
-        .plan{background:var(--ink2);border:1.5px solid rgba(255,255,255,0.06);border-radius:18px;padding:32px;transition:border-color 0.2s}
-        .plan:hover{border-color:rgba(232,160,32,0.4)}
-        .plan.featured{background:var(--amber);border-color:var(--amber)}
-        .plan-name{font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(250,247,242,0.4);margin-bottom:8px}
-        .plan.featured .plan-name{color:rgba(12,10,8,0.5)}
-        .plan-price{font-family:'Playfair Display',serif;font-size:48px;font-weight:900;line-height:1;color:var(--cream);margin-bottom:4px}
-        .plan.featured .plan-price{color:var(--ink)}
-        .plan-period{font-size:13px;color:rgba(250,247,242,0.4);margin-bottom:24px}
-        .plan.featured .plan-period{color:rgba(12,10,8,0.5)}
-        .plan-features{list-style:none;margin-bottom:28px}
-        .plan-features li{display:flex;align-items:flex-start;gap:10px;font-size:14px;
-          color:rgba(250,247,242,0.7);padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
-        .plan.featured .plan-features li{color:rgba(12,10,8,0.7);border-bottom-color:rgba(12,10,8,0.08)}
-        .plan-features li::before{content:'✓';color:var(--amber);font-weight:700;font-size:13px;flex-shrink:0;margin-top:1px}
-        .plan.featured .plan-features li::before{color:var(--ink)}
-        .plan-btn{display:block;width:100%;padding:13px;border-radius:9px;font-size:14px;font-weight:800;
-          text-align:center;text-decoration:none;transition:all 0.2s;cursor:pointer;border:none;
-          background:rgba(255,255,255,0.08);color:var(--cream)}
-        .plan.featured .plan-btn{background:var(--ink);color:var(--amber)}
-        .plan-badge{display:inline-block;background:var(--ink);color:var(--amber);font-size:10px;
-          font-weight:800;letter-spacing:1px;text-transform:uppercase;padding:4px 12px;border-radius:100px;margin-bottom:16px}
-        .faq{background:var(--cream2)}
-        .faq-list{margin-top:48px;max-width:680px}
-        .faq-item{border-bottom:1.5px solid rgba(155,148,136,0.2);padding:20px 0;cursor:pointer}
-        .faq-q{display:flex;justify-content:space-between;align-items:center;font-size:16px;font-weight:700;color:var(--ink)}
-        .faq-toggle{width:28px;height:28px;border-radius:50%;background:var(--amber-dim);
-          border:1px solid var(--amber-border);display:flex;align-items:center;justify-content:center;
-          font-size:16px;color:var(--amber);flex-shrink:0;transition:transform 0.2s}
-        .faq-a{font-size:14px;color:var(--stone2);line-height:1.7;margin-top:14px;display:none}
-        .faq-item.open .faq-a{display:block}
-        .faq-item.open .faq-toggle{transform:rotate(45deg)}
-        .cta-section{background:var(--ink);padding:120px 5vw;text-align:center;position:relative;overflow:hidden}
-        .cta-section .section-title{color:var(--cream);font-size:clamp(36px,5vw,64px)}
-        .cta-section .section-sub{color:rgba(250,247,242,0.5);margin:0 auto 48px}
-        .cta-flags{display:flex;justify-content:center;gap:20px;margin-top:48px;font-size:13px;color:rgba(250,247,242,0.4)}
-        .lp-footer{background:var(--ink);border-top:1px solid rgba(255,255,255,0.06);padding:32px 5vw;
-          display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
-        .lp-footer .logo{font-family:'Playfair Display',serif;font-size:18px;font-weight:900;color:var(--cream)}
-        .lp-footer .logo span{color:var(--amber)}
+        ::selection{background:${C.yellow};color:${C.black}}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
         @keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-        @media(max-width:768px){.nav-links{display:none}.pricing-grid{grid-template-columns:1fr}}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+        .f1{animation:fadeUp 0.6s 0.0s ease both}
+        .f2{animation:fadeUp 0.6s 0.12s ease both}
+        .f3{animation:fadeUp 0.6s 0.24s ease both}
+        .f4{animation:fadeUp 0.6s 0.36s ease both}
+        .sc:hover{border-color:rgba(245,197,24,0.4)!important;transform:translateY(-2px);background:rgba(245,197,24,0.06)!important}
+        .fc:hover{border-color:rgba(27,79,216,0.4)!important;transform:translateY(-2px)}
+        .by:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(245,197,24,0.35)!important}
+        a{text-decoration:none}
+        @media(max-width:768px){.nl{display:none!important}.segs{grid-template-columns:1fr 1fr!important}}
       `}</style>
-      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 
-      <div className="lp-body">
-        <nav>
-          <div className="nav-logo">Re<span>v</span>ora</div>
-          <div className="nav-links">
-            <a href="#como-funciona">Como funciona</a>
-            <a href="#funcionalidades">Funcionalidades</a>
-            <a href="#precos">Preços</a>
-          </div>
-          <a href="#precos" className="nav-cta">Começar grátis →</a>
-        </nav>
-
-        <section className="hero">
-          <div className="hero-bg"></div>
-          <div className="hero-eyebrow">● Reputação · Feedback · Fidelização</div>
-          <h1>Transforme feedback em decisões melhores</h1>
-          <p className="hero-sub">Entenda a satisfação dos seus clientes e identifique problemas antes de perder vendas</p>
-          <div className="hero-actions">
-            <a href="#precos" className="btn-primary">⚡ Começar gratuitamente</a>
-            <a href="#como-funciona" className="btn-ghost">Testar grátis por 14 dias</a>
-          </div>
-          <div className="hero-social">
-            <div className="hero-avatars"><span>M</span><span>A</span><span>J</span><span>C</span></div>
-            <div>
-              <div className="stars-row">★★★★★</div>
-              <div>+230 negócios já usam o Revora</div>
-            </div>
-          </div>
-        </section>
-
-        <div className="ticker">
-          <div className="ticker-inner">
-            {[...Array(2)].map((_,x) => (
-              <span key={x} style={{display:'contents'}}>
-                <span className="ticker-item"><strong>+230</strong> negócios ativos <span className="ticker-dot"></span></span>
-                <span className="ticker-item"><strong>+18.400</strong> avaliações geradas <span className="ticker-dot"></span></span>
-                <span className="ticker-item">🇧🇷 Brasil <span className="ticker-dot"></span></span>
-                <span className="ticker-item">🇵🇹 Portugal <span className="ticker-dot"></span></span>
-                <span className="ticker-item">🇮🇹 Itália <span className="ticker-dot"></span></span>
-                <span className="ticker-item"><strong>74%</strong> taxa de conversão média <span className="ticker-dot"></span></span>
-                <span className="ticker-item">Sem app · 100% WhatsApp <span className="ticker-dot"></span></span>
-              </span>
-            ))}
-          </div>
+      {/* NAV */}
+      <nav style={{position:'fixed',top:0,left:0,right:0,zIndex:100,height:60,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 5vw',background:'rgba(10,10,10,0.92)',backdropFilter:'blur(12px)',borderBottom:`1px solid ${C.border}`}}>
+        <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,letterSpacing:-0.5}}>Re<span style={{color:C.yellow}}>v</span>ora</div>
+        <div className="nl" style={{display:'flex',gap:24}}>
+          {[['#segmentos','Segmentos'],['#como-funciona','Como funciona'],['#precos','Preços']].map(([h,l])=>(
+            <a key={h} href={h} style={{fontSize:13,fontWeight:500,color:C.muted,transition:'color 0.2s'}} onMouseOver={e=>e.target.style.color=C.white} onMouseOut={e=>e.target.style.color=C.muted}>{l}</a>
+          ))}
         </div>
+        <div style={{display:'flex',gap:10}}>
+          <a href="/login" style={{padding:'8px 16px',borderRadius:8,border:`1px solid ${C.border2}`,color:C.muted,fontSize:13,fontWeight:600,transition:'all 0.2s'}} onMouseOver={e=>{e.currentTarget.style.borderColor='rgba(255,255,255,0.3)';e.currentTarget.style.color=C.white}} onMouseOut={e=>{e.currentTarget.style.borderColor=C.border2;e.currentTarget.style.color=C.muted}}>Entrar</a>
+          <a href="/cadastro" style={{padding:'8px 18px',borderRadius:8,background:C.yellow,color:C.black,fontSize:13,fontWeight:800}}>Começar grátis</a>
+        </div>
+      </nav>
 
-        <section className="how" id="como-funciona">
-          <div className="section-label">Como funciona</div>
-          <div className="section-title">3 passos.<br/>Resultado imediato.</div>
-          <p className="section-sub">Uma plataforma simples que cuida da sua reputação enquanto você foca no atendimento.</p>
-          <div className="steps-grid">
-            {[
-              {n:"01",i:"👤",t:"Atendente cadastra o cliente",p:"Nome e WhatsApp em menos de 10 segundos. Funciona em qualquer celular, sem app."},
-              {n:"02",i:"✓",t:"Clica em \"Finalizar\"",p:"O Revora envia automaticamente uma mensagem pedindo a nota de 1 a 5 estrelas."},
-              {n:"03",i:"⭐",t:"Cliente avalia e recebe o cupom",p:"Clientes satisfeitos recebem o link do Google e um cupom. Experiências negativas geram alertas privados."},
-              {n:"04",i:"📈",t:"Você vê tudo no painel",p:"Avaliações geradas, cupons enviados, conversão e alertas de clientes insatisfeitos."},
-            ].map(s => (
-              <div key={s.n} className="step">
-                <div className="step-num">{s.n}</div>
-                <div className="step-icon">{s.i}</div>
-                <h3>{s.t}</h3>
-                <p>{s.p}</p>
+      {/* HERO */}
+      <section style={{minHeight:'100vh',display:'flex',flexDirection:'column',justifyContent:'center',padding:'120px 5vw 80px',position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',top:-300,right:-200,width:700,height:700,borderRadius:'50%',background:`radial-gradient(circle,${C.blue}14 0%,transparent 70%)`,pointerEvents:'none'}}/>
+        <div style={{position:'absolute',inset:0,backgroundImage:`linear-gradient(${C.border} 1px,transparent 1px),linear-gradient(90deg,${C.border} 1px,transparent 1px)`,backgroundSize:'80px 80px',pointerEvents:'none',opacity:0.35}}/>
+        <div style={{position:'relative',maxWidth:860}}>
+          <div className="f1" style={{display:'inline-flex',alignItems:'center',gap:8,background:C.black3,border:`1px solid ${C.border2}`,borderRadius:100,padding:'6px 16px',marginBottom:28}}>
+            <span style={{width:6,height:6,borderRadius:'50%',background:C.yellow,animation:'pulse 2s ease infinite'}}/>
+            <span style={{fontSize:11,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:C.yellow}}>Plataforma de Retenção de Clientes</span>
+          </div>
+          <h1 className="f2" style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(42px,6.5vw,84px)',fontWeight:900,lineHeight:1.04,letterSpacing:-2.5,marginBottom:24}}>
+            Entenda, retenha e<br/><span style={{color:C.yellow}}>recupere</span> seus clientes.
+          </h1>
+          <p className="f3" style={{fontSize:'clamp(15px,1.8vw,19px)',color:'#AAAAAA',lineHeight:1.65,maxWidth:560,marginBottom:40}}>
+            O Revora combina feedback, recorrência e inteligência para identificar clientes em risco — antes que eles saiam pela porta.
+          </p>
+          <div className="f4" style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:60}}>
+            <a href="/cadastro" className="by" style={{display:'inline-flex',alignItems:'center',gap:8,padding:'14px 30px',borderRadius:10,background:C.yellow,color:C.black,fontSize:15,fontWeight:800,boxShadow:'0 8px 24px rgba(245,197,24,0.25)',transition:'all 0.2s'}}>⚡ Começar grátis — 14 dias</a>
+            <a href="#como-funciona" style={{display:'inline-flex',alignItems:'center',gap:6,padding:'14px 24px',borderRadius:10,border:`2px solid ${C.border2}`,color:C.muted,fontSize:14,fontWeight:600}}>Como funciona →</a>
+          </div>
+          <div className="f4" style={{display:'flex',gap:40,flexWrap:'wrap'}}>
+            {[['74%','conversão média'],['+18k','avaliações geradas'],['3x','mais retenção'],['🇧🇷🇵🇹🇮🇹','3 mercados']].map(([v,l])=>(
+              <div key={l}>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:26,fontWeight:900,color:C.yellow}}>{v}</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{l}</div>
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="features" id="funcionalidades">
-          <div className="section-label">Funcionalidades</div>
-          <div className="section-title">Tudo que você precisa.<br/>Nada que você não usa.</div>
-          <div className="features-grid">
-            {[
-              {i:"⭐",t:"Avaliações no Google automáticas",p:"Link direto para a página de avaliação do seu negócio. Cliente avalia em 30 segundos.",tag:"Core"},
-              {i:"🎁",t:"Cupom de fidelização",p:"Após avaliar, cliente recebe automaticamente um cupom de desconto personalizado. Ele volta.",tag:"Fidelização"},
-              {i:"🔔",t:"Recuperação de experiências negativas",p:"Quando um cliente não ficou satisfeito, o Revora detecta e alerta você em tempo real.",tag:"Proteção"},
-              {i:"📊",t:"Painel do dono",p:"Métricas em tempo real: avaliações, cupons, conversão e histórico completo de clientes.",tag:"Gestão"},
-              {i:"🔧",t:"Funciona para qualquer negócio",p:"Salão, barbearia, restaurante, oficina, petshop, loja de carros. Configure e pronto.",tag:"Flexível"},
-              {i:"🌍",t:"Brasil, Portugal e Itália",p:"Mesmo produto, 3 mercados. Mensagens no idioma certo para cada país.",tag:"Multi-país"},
-            ].map(f => (
-              <div key={f.t} className="feature-card">
-                <div className="feature-icon">{f.i}</div>
-                <h3>{f.t}</h3>
-                <p>{f.p}</p>
-                <span className="feature-tag">{f.tag}</span>
-              </div>
-            ))}
+      {/* TICKER */}
+      <div style={{background:C.yellow,padding:'13px 0',overflow:'hidden'}}>
+        <div style={{display:'flex',animation:'ticker 22s linear infinite',whiteSpace:'nowrap'}}>
+          {[...Array(2)].map((_,x)=>(
+            <span key={x} style={{display:'contents'}}>
+              {['NPS + CSAT + CES','Google Reviews','Clientes em risco','Retenção inteligente','Cupom automático','Sem API · WhatsApp','Brasil · Portugal · Itália'].map(item=>(
+                <span key={item} style={{display:'inline-flex',alignItems:'center',gap:20,padding:'0 32px',fontSize:13,fontWeight:700,color:C.black}}>{item}<span style={{opacity:0.35}}>·</span></span>
+              ))}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* SEGMENTOS */}
+      <section id="segmentos" style={{padding:'100px 5vw',background:C.black}}>
+        <div style={{maxWidth:1100,margin:'0 auto'}}>
+          <div style={{marginBottom:48}}>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:C.yellow,marginBottom:14}}>Segmentos</div>
+            <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(28px,4vw,48px)',fontWeight:900,letterSpacing:-1,marginBottom:14}}>Feito para o seu negócio.</h2>
+            <p style={{fontSize:16,color:C.muted,maxWidth:500}}>Cada segmento tem sua própria lógica de recorrência, pesquisa e recuperação.</p>
           </div>
-        </section>
-
-        <div className="stats">
-          <div className="stats-inner">
-            {[
-              {v:"74%",l:"Taxa de conversão média"},
-              {v:"+18k",l:"Avaliações geradas"},
-              {v:"3x",l:"Mais avaliações em 30 dias"},
-              {v:"1",l:"Clique para disparar"},
-            ].map(s => (
-              <div key={s.l}><div className="stat-value">{s.v}</div><div className="stat-label">{s.l}</div></div>
+          <div className="segs" style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10}}>
+            {SEGMENTS.map(s=>(
+              <a key={s.slug} href={`/${s.slug}`} className="sc" style={{display:'block',background:C.black2,border:`1.5px solid ${C.border}`,borderRadius:14,padding:'20px 16px',transition:'all 0.2s'}}>
+                <div style={{fontSize:28,marginBottom:10}}>{s.emoji}</div>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:4}}>{s.label}</div>
+                <div style={{fontSize:12,color:C.muted}}>{s.desc}</div>
+                <div style={{marginTop:12,fontSize:11,color:C.yellow,fontWeight:700}}>Ver mais →</div>
+              </a>
             ))}
           </div>
         </div>
+      </section>
 
-        <section className="proof">
-          <div className="section-label">Depoimentos</div>
-          <div className="section-title">Negócios que já crescem com Revora</div>
-          <div className="reviews-grid">
+      {/* HOW IT WORKS */}
+      <section id="como-funciona" style={{padding:'100px 5vw',background:C.black2,borderTop:`1px solid ${C.border}`}}>
+        <div style={{maxWidth:1100,margin:'0 auto'}}>
+          <div style={{marginBottom:56}}>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:C.yellow,marginBottom:14}}>Como funciona</div>
+            <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(28px,4vw,48px)',fontWeight:900,letterSpacing:-1}}>Feedback. Jornada. Retenção.</h2>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:14}}>
             {[
-              {s:"★★★★★",t:'"Em 2 semanas saímos de 47 para 89 avaliações. Minha nota subiu de 4.1 para 4.7. Clientela nova chegando todo dia."',n:"Mariana Costa",b:"✂️ Salão M.Costa — São Paulo 🇧🇷"},
-              {s:"★★★★★",t:'"Antes eu tinha que ficar pedindo avaliação na cara dura. Agora é automático e ainda tenho um painel que me avisa quando alguém ficou insatisfeito."',n:"Rui Figueiredo",b:"🔧 Auto Figueiredo — Lisboa 🇵🇹"},
-              {s:"★★★★★",t:'"Il sistema è semplicissimo. Le recensioni sono aumentate del 200% in un mese. Consiglio a tutti."',n:"Giuseppe Romano",b:"🍕 Pizzeria Romano — Milano 🇮🇹"},
-            ].map(r => (
-              <div key={r.n} className="review-card">
-                <div className="review-stars">{r.s}</div>
-                <p className="review-text">{r.t}</p>
-                <div className="review-author">
-                  <div className="review-avatar">{r.n.charAt(0)}</div>
-                  <div><div className="review-name">{r.n}</div><div className="review-biz">{r.b}</div></div>
+              {icon:'📋',color:C.blue,title:'Coleta de feedback',desc:'NPS, CSAT, CES e Google Reviews automáticos após cada atendimento.'},
+              {icon:'🔄',color:C.yellow,title:'Jornada de retorno',desc:'O sistema sabe quando cada cliente deveria voltar baseado no serviço.'},
+              {icon:'⚠️',color:'#EF4444',title:'Clientes em risco',desc:'Cliente passou do prazo sem voltar? Você recebe alerta imediato.'},
+              {icon:'🎯',color:C.blue,title:'Recuperação inteligente',desc:'Ação automática: oferta, cupom ou contato baseado no perfil do cliente.'},
+            ].map(f=>(
+              <div key={f.title} className="fc" style={{background:C.black,border:`1.5px solid ${C.border}`,borderRadius:14,padding:24,transition:'all 0.2s'}}>
+                <div style={{width:44,height:44,borderRadius:10,background:`${f.color}15`,border:`1px solid ${f.color}25`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,marginBottom:16}}>{f.icon}</div>
+                <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>{f.title}</div>
+                <div style={{fontSize:13,color:C.muted,lineHeight:1.65}}>{f.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ROADMAP */}
+      <section style={{padding:'100px 5vw',background:C.black}}>
+        <div style={{maxWidth:1100,margin:'0 auto'}}>
+          <div style={{marginBottom:48}}>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:C.yellow,marginBottom:14}}>Roadmap</div>
+            <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(26px,3.5vw,44px)',fontWeight:900,letterSpacing:-1}}>Mais inteligente a cada versão.</h2>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:2,background:C.border,borderRadius:16,overflow:'hidden'}}>
+            {[
+              {v:'V1',label:'Disponível',color:C.yellow,items:['Feedback automático','NPS · CSAT · CES','Google Reviews','QR Code + wa.me','Cupom fidelização']},
+              {v:'V2',label:'Em breve',color:C.blue,items:['Jornada de retorno','Recorrência por serviço','Cliente em risco','Auth + multi-empresa','Alertas inteligentes']},
+              {v:'V3',label:'Roadmap',color:C.muted2,items:['IA de diagnóstico','Saudável / Em risco','Insatisfeito / Promotor','Sugestão de ações','Score de retenção']},
+              {v:'V4',label:'Roadmap',color:C.muted2,items:['Programa VIP','Indicações rastreadas','WhatsApp API oficial','Multi-idioma nativo','Fidelização avançada']},
+            ].map((item,i)=>(
+              <div key={item.v} style={{background:C.black2,padding:'32px 24px'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
+                  <span style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:item.color}}>{item.v}</span>
+                  <span style={{fontSize:10,fontWeight:700,background:`${item.color}18`,color:item.color,padding:'2px 8px',borderRadius:100,border:`1px solid ${item.color}30`}}>{item.label}</span>
                 </div>
+                <ul style={{listStyle:'none'}}>
+                  {item.items.map(it=>(
+                    <li key={it} style={{fontSize:13,color:i<1?'#AAAAAA':C.muted2,padding:'5px 0',borderBottom:`1px solid ${C.border}`,display:'flex',gap:8}}>
+                      <span style={{color:item.color,fontWeight:700,flexShrink:0}}>{i<1?'✓':'·'}</span>{it}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="pricing" id="precos">
-          <div className="section-label">Preços</div>
-          <div className="section-title">Simples.<br/>Sem surpresas.</div>
-          <p className="section-sub">14 dias grátis em qualquer plano. Cancele quando quiser.</p>
-          <div className="pricing-grid">
-            <div className="plan">
-              <div className="plan-name">Starter</div>
-              <div className="plan-price">R$97</div>
-              <div className="plan-period">por mês · até 100 envios</div>
-              <ul className="plan-features">
-                {["Envio automático pós-atendimento","Recuperação de experiências negativas","Cupom de fidelização","Painel básico","1 usuário atendente"].map(f=><li key={f}>{f}</li>)}
-              </ul>
-              <a href="/atendente" className="plan-btn">Começar grátis</a>
-            </div>
-            <div className="plan featured">
-              <div className="plan-badge">Mais popular</div>
-              <div className="plan-name">Pro</div>
-              <div className="plan-price">R$197</div>
-              <div className="plan-period">por mês · envios ilimitados</div>
-              <ul className="plan-features">
-                {["Tudo do Starter","Envios ilimitados","Múltiplos atendentes","Dashboard completo","Suporte prioritário","Multi-idioma PT/IT"].map(f=><li key={f}>{f}</li>)}
-              </ul>
-              <a href="/atendente" className="plan-btn">Começar grátis</a>
-            </div>
+      {/* PRICING */}
+      <section id="precos" style={{padding:'100px 5vw',background:C.black2,borderTop:`1px solid ${C.border}`}}>
+        <div style={{maxWidth:800,margin:'0 auto',textAlign:'center'}}>
+          <div style={{fontSize:11,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:C.yellow,marginBottom:14}}>Preços</div>
+          <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(28px,4vw,48px)',fontWeight:900,letterSpacing:-1,marginBottom:12}}>Simples. Sem surpresas.</h2>
+          <p style={{fontSize:15,color:C.muted,marginBottom:48}}>14 dias grátis · Sem cartão · Cancele quando quiser</p>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+            {[
+              {name:'Starter',price:'R$97',period:'/mês · até 100 envios',features:['Feedback pós-atendimento','NPS + CSAT automático','Google Reviews','Cupom de fidelização','1 atendente'],featured:false},
+              {name:'Pro',price:'R$197',period:'/mês · ilimitado',features:['Tudo do Starter','Envios ilimitados','Múltiplos atendentes','Clientes em risco (V2)','Dashboard avançado','Suporte prioritário'],featured:true},
+            ].map(plan=>(
+              <div key={plan.name} style={{background:plan.featured?C.yellow:C.black,border:`1.5px solid ${plan.featured?C.yellow:C.border}`,borderRadius:16,padding:'28px 24px',textAlign:'left'}}>
+                {plan.featured&&<div style={{fontSize:10,fontWeight:700,background:C.black,color:C.yellow,padding:'3px 10px',borderRadius:100,display:'inline-block',marginBottom:12,letterSpacing:1}}>MAIS POPULAR</div>}
+                <div style={{fontSize:11,fontWeight:700,color:plan.featured?'rgba(0,0,0,0.5)':C.muted,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>{plan.name}</div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:44,fontWeight:900,color:plan.featured?C.black:C.white,lineHeight:1,marginBottom:4}}>{plan.price}</div>
+                <div style={{fontSize:13,color:plan.featured?'rgba(0,0,0,0.5)':C.muted,marginBottom:24}}>{plan.period}</div>
+                <ul style={{listStyle:'none',marginBottom:24}}>
+                  {plan.features.map(f=>(
+                    <li key={f} style={{display:'flex',gap:8,fontSize:13,color:plan.featured?C.black:'#AAAAAA',padding:'7px 0',borderBottom:`1px solid ${plan.featured?'rgba(0,0,0,0.1)':C.border}`}}>
+                      <span style={{color:plan.featured?C.black:C.yellow,fontWeight:700}}>✓</span>{f}
+                    </li>
+                  ))}
+                </ul>
+                <a href="/cadastro" style={{display:'block',padding:'13px',borderRadius:9,textAlign:'center',fontSize:14,fontWeight:800,background:plan.featured?C.black:C.yellow,color:plan.featured?C.yellow:C.black}}>Começar grátis</a>
+              </div>
+            ))}
           </div>
-        </section>
+          <p style={{marginTop:20,fontSize:12,color:C.muted2}}>Portugal e Itália: €29/mês Starter · €59/mês Pro</p>
+        </div>
+      </section>
 
-        <section className="cta-section">
-          <div className="section-label" style={{color:'var(--amber)'}}>Comece hoje</div>
-          <div className="section-title">Fortaleça sua presença<br/>no Google hoje.</div>
-          <p className="section-sub">Colete feedback, acompanhe a satisfação dos seus clientes e fortaleça sua presença no Google com uma plataforma simples e automatizada.</p>
-          <div className="hero-actions" style={{justifyContent:'center'}}>
-            <a href="/atendente" className="btn-primary" style={{fontSize:'16px',padding:'18px 36px'}}>⚡ Começar 14 dias grátis</a>
-          </div>
-          <div className="cta-flags">
+      {/* CTA */}
+      <section style={{padding:'120px 5vw',background:C.black,textAlign:'center',position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:700,height:700,borderRadius:'50%',background:`radial-gradient(circle,${C.blue}10 0%,transparent 65%)`,pointerEvents:'none'}}/>
+        <div style={{position:'relative'}}>
+          <h2 style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(32px,5vw,68px)',fontWeight:900,letterSpacing:-2,marginBottom:20}}>
+            Pare de perder clientes<br/><span style={{color:C.yellow}}>que você já conquistou.</span>
+          </h2>
+          <p style={{fontSize:16,color:C.muted,maxWidth:480,margin:'0 auto 40px',lineHeight:1.7}}>Entenda, retenha e recupere seus clientes com uma plataforma simples e automatizada.</p>
+          <a href="/cadastro" className="by" style={{display:'inline-flex',alignItems:'center',gap:8,padding:'16px 36px',borderRadius:12,background:C.yellow,color:C.black,fontSize:16,fontWeight:800,boxShadow:'0 8px 24px rgba(245,197,24,0.25)',transition:'all 0.2s'}}>⚡ Começar 14 dias grátis</a>
+          <div style={{display:'flex',justifyContent:'center',gap:24,marginTop:36,fontSize:13,color:C.muted2}}>
             <span>🇧🇷 Brasil</span><span>·</span><span>🇵🇹 Portugal</span><span>·</span><span>🇮🇹 Itália</span>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <footer className="lp-footer">
-          <div className="logo">Re<span>v</span>ora</div>
-          <p style={{fontSize:'12px',color:'rgba(250,247,242,0.3)'}}>© 2025 Revora. Todos os direitos reservados.</p>
-        </footer>
-      </div>
-    </>
+      {/* FOOTER */}
+      <footer style={{background:C.black2,borderTop:`1px solid ${C.border}`,padding:'28px 5vw',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:16}}>
+        <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900}}>Re<span style={{color:C.yellow}}>v</span>ora</div>
+        <div style={{display:'flex',gap:20,flexWrap:'wrap'}}>
+          {SEGMENTS.map(s=>(
+            <a key={s.slug} href={`/${s.slug}`} style={{fontSize:12,color:C.muted2}} onMouseOver={e=>e.target.style.color=C.white} onMouseOut={e=>e.target.style.color=C.muted2}>{s.emoji} {s.label}</a>
+          ))}
+        </div>
+        <div style={{fontSize:11,color:'#333'}}>© 2025 Revora</div>
+      </footer>
+    </div>
   )
 }
