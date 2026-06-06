@@ -247,31 +247,39 @@ export default function Atendente() {
 
               {/* Action */}
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                {client.status === 'aguardando' && (
-                  <button onClick={() => finalize(client)} disabled={sending === client.id} style={{
-                    padding: '8px 18px', borderRadius: 8, border: 'none',
-                    background: sending === client.id ? C.stone : C.ink,
-                    color: C.cream, fontSize: 12, fontWeight: 700, cursor: sending === client.id ? 'wait' : 'pointer',
-                    transition: 'all 0.15s', whiteSpace: 'nowrap',
-                  }}
-                    onMouseOver={e => { if (sending !== client.id) e.currentTarget.style.background = C.amber; e.currentTarget.style.color = C.ink }}
-                    onMouseOut={e => { e.currentTarget.style.background = C.ink; e.currentTarget.style.color = C.cream }}
-                  >
-                    {sending === client.id ? 'Enviando...' : '✓ Finalizar'}
-                  </button>
-                )}
-                {client.status === 'msg_enviada' && (
-                  <span style={{ fontSize: 12, color: C.blue, fontWeight: 600 }}>📱 Aguardando</span>
-                )}
-                {client.status === 'avaliado' && (
-                  <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>🎉 Avaliou!</span>
-                )}
-                {client.status === 'low_rating' && (
-                  <a href={`https://wa.me/55${client.phone?.replace(/\D/g, '')}`} target="_blank"
-                    style={{ fontSize: 12, color: C.red, fontWeight: 700, textDecoration: 'none' }}>
-                    ⚠️ Contatar
-                  </a>
-                )}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
+                  {client.status === 'aguardando' && (
+                    <button onClick={() => finalize(client)} disabled={sending === client.id} style={{
+                      padding: '8px 16px', borderRadius: 8, border: 'none',
+                      background: sending === client.id ? C.stone : C.ink,
+                      color: C.cream, fontSize: 12, fontWeight: 700, cursor: sending === client.id ? 'wait' : 'pointer',
+                      transition: 'all 0.15s', whiteSpace: 'nowrap',
+                    }}
+                      onMouseOver={e => { if (sending !== client.id) e.currentTarget.style.background = C.amber; e.currentTarget.style.color = C.ink }}
+                      onMouseOut={e => { e.currentTarget.style.background = C.ink; e.currentTarget.style.color = C.cream }}
+                    >
+                      {sending === client.id ? '...' : '✓ Finalizar'}
+                    </button>
+                  )}
+                  {client.status === 'msg_enviada' && (
+                    <span style={{ fontSize: 12, color: C.blue, fontWeight: 600 }}>📱 Aguardando</span>
+                  )}
+                  {client.status === 'avaliado' && (
+                    <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>🎉 Avaliou!</span>
+                  )}
+                  {/* WhatsApp direct button — always visible */}
+                  <a href={`/enviar/${client.id}`}
+                    title="Enviar mensagem via WhatsApp"
+                    style={{
+                      width: 32, height: 32, borderRadius: 8, border: `1px solid rgba(37,211,102,0.3)`,
+                      background: 'rgba(37,211,102,0.08)', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: 15, flexShrink: 0,
+                      transition: 'all 0.15s', textDecoration: 'none',
+                    }}
+                    onMouseOver={e => { e.currentTarget.style.background='rgba(37,211,102,0.2)'; e.currentTarget.style.borderColor='rgba(37,211,102,0.6)' }}
+                    onMouseOut={e => { e.currentTarget.style.background='rgba(37,211,102,0.08)'; e.currentTarget.style.borderColor='rgba(37,211,102,0.3)' }}
+                  >💬</a>
+                </div>
               </div>
             </div>
           ))}
