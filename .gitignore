@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ── Dependências ─────────────────────────────────────────────
 node_modules/
 .pnp
@@ -37,3 +38,10 @@ __pycache__/
 *.db
 .venv/
 venv/
+=======
+node_modules
+dist
+.env
+.env.local
+.DS_Store
+>>>>>>> 853097a2daeaaff596308f4d331f600ad9db6c33
