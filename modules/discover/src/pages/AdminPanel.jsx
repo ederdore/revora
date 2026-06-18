@@ -41,8 +41,8 @@ export default function AdminPanel() {
     const [{ data: ts }, { data: evs }, { count: cc }, { count: vc }] = await Promise.all([
       supabase.from("tenants").select("*, tenant_users(count), companies(count)").order("created_at", { ascending: false }),
       supabase.from("events").select("*, profiles(full_name)").order("created_at", { ascending: false }).limit(50),
-      supabase.from("companies").select("*", { count: "exact", head: true }),
-      supabase.from("score_validations").select("*", { count: "exact", head: true }),
+      supabase.from("disc_companies").select("*", { count: "exact", head: true }),
+      supabase.from("disc_validations").select("*", { count: "exact", head: true }),
     ]);
 
     setTenants(ts || []);

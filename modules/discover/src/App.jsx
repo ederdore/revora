@@ -145,7 +145,7 @@ function AppShell() {
     if(!rows.length){showToast("Nenhum dado encontrado","error");return;}
     setDataLoading(true);
     const toInsert=rows.map(r=>({tenant_id:tenant.id,name:r.name,website:r.website||null,category:r.category||null,subcategory:r.subcategory||null,city:r.city||null,state_region:r.state_region||null,country:r.country||"Portugal",source_type:"csv",status:"new",imported_by:user.id}));
-    const{error}=await supabase.from("companies").insert(toInsert);
+    const{error}=await supabase.from("disc_companies").insert(toInsert);
     if(error)showToast("Erro: "+error.message,"error");
     else{await logEvent("company.imported","company",null,{count:rows.length});showToast(rows.length+" empresa(s) importada(s)!","success");await loadCompanies();setPage("dashboard");}
     setDataLoading(false);e.target.value="";
@@ -153,7 +153,7 @@ function AppShell() {
 
   async function addManual(name,website,category,city,country) {
     if(!name){showToast("Informe o nome","warning");return;}
-    const{error}=await supabase.from("companies").insert({tenant_id:tenant.id,name,website:website||null,category:category||null,city:city||null,country:country||"Portugal",source_type:"manual",status:"new",imported_by:user.id});
+    const{error}=await supabase.from("disc_companies").insert({tenant_id:tenant.id,name,website:website||null,category:category||null,city:city||null,country:country||"Portugal",source_type:"manual",status:"new",imported_by:user.id});
     if(error)showToast("Erro: "+error.message,"error");
     else{await logEvent("company.imported","company",null,{name,source:"manual"});showToast("Empresa adicionada!","success");await loadCompanies();}
   }
@@ -161,17 +161,17 @@ function AppShell() {
   async function enrichCompany(company) {
     if(enrichingId===company.id)return;
     setEnrichingId(company.id);
-    await supabase.from("companies").update({status:"enriching"}).eq("id",company.id);
+    await supabase.from("disc_companies").update({status:"enriching"}).eq("id",company.id);
     const domain=(company.website||"empresa.pt").replace(/https?:\/\//,"").split("/")[0];
     const mock={tenant_id:tenant.id,company_id:company.id,website_title:`${company.name} | ${company.category||"Saúde & Bem-Estar"}`,meta_description:`${company.name} - ${company.category||"especialistas em saúde"} em ${company.city||"Portugal"}.`,h1_main:company.name,visible_content:`${company.name} é uma referência em ${company.category||"nutrição e bem-estar"} ${company.city?"em "+company.city:"em Portugal"}. Trabalhamos com as melhores marcas, incluindo suplementos, vitaminas, proteínas e colágenos. ${Math.random()>0.5?"Dispomos de loja física e online.":"Condições especiais para parceiros e revendedores."}`,email:`geral@${domain}`,phone:`+351 9${Math.floor(Math.random()*2)+1} ${Math.floor(Math.random()*9000000+1000000)}`,instagram:Math.random()>0.3?`@${company.name.toLowerCase().replace(/\s+/g,"").replace(/[^a-z0-9]/g,"")}`:null,linkedin:Math.random()>0.5?`linkedin.com/company/${company.name.toLowerCase().replace(/\s+/g,"-")}`:null,facebook:Math.random()>0.4?`facebook.com/${company.name.toLowerCase().replace(/\s+/g,"")}`:null,whatsapp:Math.random()>0.6?`+351 91 ${Math.floor(Math.random()*9000000+1000000)}`:null,contact_page_url:company.website?`${company.website}/contactos`:null,enrichment_status:"done"};
-    await supabase.from("company_enrichment").upsert(mock,{onConflict:"company_id"});
+    await supabase.from("disc_enrichment").upsert(mock,{onConflict:"company_id"});
     const scores=computeScores(mock,tenant);
-    await supabase.from("company_scoring").upsert({tenant_id:tenant.id,company_id:company.id,...scores},{onConflict:"company_id"});
+    await supabase.from("disc_scoring").upsert({tenant_id:tenant.id,company_id:company.id,...scores},{onConflict:"company_id"});
     const signals=detectSignals(mock);
-    await supabase.from("company_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
+    await supabase.from("disc_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
     const ai=await callClaudeAI(company,mock,tenant);
-    await supabase.from("company_ai_analysis").upsert({tenant_id:tenant.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
-    await supabase.from("companies").update({status:"scored"}).eq("id",company.id);
+    await supabase.from("disc_ai_analysis").upsert({tenant_id:tenant.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
+    await supabase.from("disc_companies").update({status:"scored"}).eq("id",company.id);
     await logEvent("company.enriched","company",company.id,{score:scores.finalScore,class:scores.scoreClass});
     setEnrichingId(null);await loadCompanies();
     showToast(`${company.name} · Score ${scores.finalScore} (${scores.scoreClass})`,"success");
@@ -186,7 +186,7 @@ function AppShell() {
 
   async function submitValidation(companyId,rating,aiScore) {
     if(!reviewerName.trim()){showToast("Informe o seu nome","warning");return;}
-    const{error}=await supabase.from("score_validations").insert({tenant_id:tenant.id,company_id:companyId,reviewer_id:user.id,ai_score:aiScore,human_rating:rating});
+    const{error}=await supabase.from("disc_validations").insert({tenant_id:tenant.id,company_id:companyId,reviewer_id:user.id,ai_score:aiScore,human_rating:rating});
     if(error)showToast("Erro ao guardar","error");
     else{setValidations(v=>({...v,[companyId]:rating}));await logEvent("validation.submitted","company",companyId,{rating,ai_score:aiScore});showToast("Avaliação guardada!","success");}
   }
