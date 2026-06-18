@@ -1,0 +1,332 @@
+import { useState, useEffect, useCallback } from "react";
+import { AuthProvider, useAuth } from "./AuthContext.jsx";
+import { supabase } from "./supabaseClient.js";
+import AuthPage from "./pages/AuthPage.jsx";
+import AdminPanel from "./pages/AdminPanel.jsx";
+import SettingsPage from "./pages/SettingsPage.jsx";
+
+const CLASS_CFG = {
+  A: { bg: "#EAF3DE", c: "#3B6D11" },
+  B: { bg: "#E6F1FB", c: "#185FA5" },
+  C: { bg: "#FAEEDA", c: "#854F0B" },
+  D: { bg: "#FCEBEB", c: "#A32D2D" },
+};
+
+const RATINGS = [
+  { v: "excellent", l: "⭐ Excelente", c: "#854F0B" },
+  { v: "good", l: "👍 Boa oportunidade", c: "#3B6D11" },
+  { v: "neutral", l: "➖ Neutro", c: "#888" },
+  { v: "bad", l: "👎 Não faz sentido", c: "#A32D2D" },
+  { v: "review_later", l: "🕐 Revisar depois", c: "#185FA5" },
+];
+
+function computeScores(enrichment, tenant) {
+  const text = ((enrichment.visible_content || "") + " " + (enrichment.meta_description || "")).toLowerCase();
+  const fitKeywords = tenant?.fit_keywords || ["ginásio","farmácia","nutricionista","loja natureza","parafarmácia","wellness","suplementos","health club","personal trainer","sports nutrition","clínica","bem-estar","distribuidor","grossista"];
+  const fitMatches = fitKeywords.filter(k => text.includes(k.toLowerCase())).length;
+  const fitScore = Math.min(100, fitMatches * 14 + (enrichment.website_title ? 16 : 0));
+  const digitalScore = Math.min(100, [enrichment.instagram?30:0, enrichment.linkedin?20:0, enrichment.facebook?15:0, enrichment.website_title?20:0, enrichment.meta_description?15:0].reduce((a,b)=>a+b,0));
+  const contactScore = Math.min(100, [enrichment.email?40:0, enrichment.phone?35:0, enrichment.whatsapp?15:0, enrichment.contact_page_url?10:0].reduce((a,b)=>a+b,0));
+  const authorityScore = Math.min(100, [enrichment.h1_main?.length>10?25:0, enrichment.meta_description?.length>50?25:0, enrichment.linkedin?25:0, enrichment.visible_content?.length>300?25:0].reduce((a,b)=>a+b,0));
+  const finalScore = Math.round(fitScore*0.35 + authorityScore*0.25 + digitalScore*0.2 + contactScore*0.2);
+  const scoreClass = finalScore>=80?"A":finalScore>=60?"B":finalScore>=40?"C":"D";
+  return { fitScore, digitalScore, contactScore, authorityScore, finalScore, scoreClass };
+}
+
+function detectSignals(enrichment) {
+  const t = (enrichment.visible_content||"").toLowerCase();
+  return {
+    has_instagram: !!enrichment.instagram, has_facebook: !!enrichment.facebook,
+    has_linkedin: !!enrichment.linkedin, has_email: !!enrichment.email,
+    has_phone: !!enrichment.phone, has_whatsapp: t.includes("whatsapp")||!!enrichment.whatsapp,
+    has_online_store: t.includes("loja")||t.includes("comprar")||t.includes("shop"),
+    has_blog: t.includes("blog")||t.includes("artigo"),
+    multiple_locations: t.includes("filial")||t.includes("unidades"),
+    custom_signals: { sports_nutrition: t.includes("suplemento")||t.includes("proteína")||t.includes("colágeno"), wellness: t.includes("bem-estar")||t.includes("wellness"), fitness: t.includes("ginásio")||t.includes("fitness"), pharmacy: t.includes("farmácia")||t.includes("parafarmácia") },
+  };
+}
+
+async function callClaudeAI(company, enrichment, tenant) {
+  const ctx = tenant?.ai_prompt_context || "Avalia o potencial comercial desta empresa como parceiro de distribuição/revenda.";
+  const biz = tenant?.business_context || "Empresa de suplementos nutricionais premium.";
+  const prompt = `És um analista comercial especializado em parcerias B2B em Portugal.\n\nContexto: ${biz}\nInstrução: ${ctx}\n\nEmpresa:\nNome: ${company.name}\nWebsite: ${company.website||"—"}\nCategoria: ${company.category||"—"}\nCidade: ${company.city||"—"}\nTítulo: ${enrichment.website_title||"—"}\nDescrição: ${enrichment.meta_description||"—"}\nConteúdo: ${(enrichment.visible_content||"").substring(0,600)}\nInstagram: ${enrichment.instagram||"não"}\nEmail: ${enrichment.email||"não"}\n\nResponde APENAS com JSON sem markdown:\n{"executive_summary":"2-3 frases","strengths":["s1","s2"],"weaknesses":["w1"],"partnership_potential":"alto|médio|baixo","recommended_action":"ação concreta","confidence_score":70}`;
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", { method:"POST", headers:{"Content-Type":"application/json","x-api-key":import.meta.env.VITE_ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-calls":"true"}, body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:prompt}]}) });
+    const data = await res.json();
+    const text = data.content?.map(b=>b.text||"").join("")||"{}";
+    return JSON.parse(text.replace(/```json|```/g,"").trim());
+  } catch { return {executive_summary:"Análise indisponível.",strengths:[],weaknesses:[],partnership_potential:"médio",recommended_action:"Contactar para qualificação.",confidence_score:50}; }
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split("\n");
+  const headers = lines[0].split(",").map(h=>h.trim().toLowerCase().replace(/\s+/g,"_"));
+  return lines.slice(1).map(line=>{
+    const vals=line.split(",").map(v=>v.trim().replace(/^"|"$/g,""));
+    const obj={};headers.forEach((h,i)=>{obj[h]=vals[i]||"";});return obj;
+  }).filter(r=>r.name);
+}
+
+function ClassBadge({cls}) {
+  if(!cls)return null;
+  const c=CLASS_CFG[cls];
+  return <span style={{background:c.bg,color:c.c,padding:"2px 9px",borderRadius:5,fontSize:11,fontWeight:500}}>Classe {cls}</span>;
+}
+
+function Toast({msg,onClose}) {
+  useEffect(()=>{const t=setTimeout(onClose,3500);return()=>clearTimeout(t);},[]);
+  const colors={info:"#185FA5",success:"#3B6D11",error:"#A32D2D",warning:"#854F0B"};
+  const c=colors[msg.type]||colors.info;
+  return <div style={{position:"fixed",bottom:24,right:24,zIndex:999,background:"#fff",border:`1px solid ${c}`,borderLeft:`4px solid ${c}`,borderRadius:8,padding:"10px 16px",display:"flex",alignItems:"center",gap:10,fontSize:13,maxWidth:340,boxShadow:"0 4px 12px rgba(0,0,0,0.07)"}}><span style={{color:c,fontWeight:500}}>{msg.text}</span><button onClick={onClose} style={{marginLeft:"auto",background:"none",border:"none",cursor:"pointer",fontSize:16,color:"#aaa"}}>×</button></div>;
+}
+
+function ImportPage({CS,handleCSV,addManual,loading}) {
+  const [name,setName]=useState("");const [website,setWebsite]=useState("");const [category,setCategory]=useState("");const [city,setCity]=useState("");const [country,setCountry]=useState("Portugal");
+  const cats=["Ginásio / Health Club","Farmácia","Parafarmácia","Loja Produtos Naturais","Nutricionista","Clínica Nutrição","Personal Trainer","Spa / Centro Bem-Estar","Distribuidor","Outro"];
+  return (
+    <div>
+      <h1 style={CS.h1}>Importar empresas</h1>
+      <p style={CS.sub}>Upload CSV ou adicione manualmente os potenciais parceiros.</p>
+      <div style={{...CS.card,padding:"32px",textAlign:"center",marginBottom:16,border:"1.5px dashed #ddd"}}>
+        <div style={{fontSize:32,marginBottom:10}}>📂</div>
+        <p style={{fontWeight:500,fontSize:14,marginBottom:6}}>Selecione um ficheiro CSV</p>
+        <p style={{fontSize:12,color:"#888",marginBottom:18}}>Colunas: <code style={{background:"#f5f5f4",padding:"2px 6px",borderRadius:4,fontSize:11}}>name, website, category, city, country</code></p>
+        <label style={{...CS.btnPrimary,display:"inline-block",cursor:"pointer"}}>{loading?"A importar...":"Escolher ficheiro"}<input type="file" accept=".csv" onChange={handleCSV} style={{display:"none"}} disabled={loading}/></label>
+      </div>
+      <div style={{...CS.card,padding:24,marginBottom:16}}>
+        <p style={{fontSize:14,fontWeight:500,marginBottom:16}}>Adicionar manualmente</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
+          {[["Nome *",name,setName,"Ex: Ginásio FitLife"],["Website",website,setWebsite,"https://..."],["Cidade",city,setCity,"Ex: Lisboa"]].map(([l,v,s,p])=>(
+            <div key={l}><label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>{l}</label><input style={{...CS.input,width:"100%"}} value={v} onChange={e=>s(e.target.value)} placeholder={p}/></div>
+          ))}
+          <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>Categoria</label><select style={{...CS.input,width:"100%"}} value={category} onChange={e=>setCategory(e.target.value)}><option value="">Selecionar...</option>{cats.map(c=><option key={c}>{c}</option>)}</select></div>
+          <div><label style={{fontSize:12,color:"#888",display:"block",marginBottom:4}}>País</label><select style={{...CS.input,width:"100%"}} value={country} onChange={e=>setCountry(e.target.value)}><option>Portugal</option><option>Espanha</option><option>Brasil</option></select></div>
+        </div>
+        <button style={CS.btnPrimary} onClick={()=>{addManual(name,website,category,city,country);setName("");setWebsite("");setCategory("");setCity("");}}>Adicionar empresa</button>
+      </div>
+      <div style={{...CS.card,padding:20}}>
+        <p style={{fontSize:13,fontWeight:500,marginBottom:10}}>Exemplo de CSV</p>
+        <pre style={{background:"#f5f5f4",padding:14,borderRadius:8,fontSize:11,overflowX:"auto",margin:0,color:"#1a1a1a"}}>{`name,website,category,city,country\nGinásio FitLife,https://fitlife.pt,Ginásio / Health Club,Lisboa,Portugal\nFarmácia Central,https://farmaciacentral.pt,Farmácia,Porto,Portugal\nNutriStore,https://nutristore.pt,Loja Produtos Naturais,Braga,Portugal`}</pre>
+      </div>
+    </div>
+  );
+}
+
+function AppShell() {
+  const {user,profile,tenant,role,isAdmin,signOut,logEvent,loading}=useAuth();
+  const [page,setPage]=useState("import");
+  const [companies,setCompanies]=useState([]);
+  const [dataLoading,setDataLoading]=useState(false);
+  const [enrichingId,setEnrichingId]=useState(null);
+  const [filterClass,setFilterClass]=useState("all");
+  const [validations,setValidations]=useState({});
+  const [reviewerName,setReviewerName]=useState("");
+  const [toast,setToast]=useState(null);
+  const showToast=(text,type="info")=>setToast({text,type});
+
+  useEffect(()=>{if(profile?.full_name)setReviewerName(profile.full_name);},[profile]);
+
+  const loadCompanies=useCallback(async()=>{
+    if(!tenant)return;setDataLoading(true);
+    const{data}=await supabase.from("companies_full").select("*").eq("tenant_id",tenant.id).order("final_score",{ascending:false,nullsFirst:false});
+    setCompanies(data||[]);setDataLoading(false);
+  },[tenant]);
+
+  useEffect(()=>{if(tenant)loadCompanies();},[tenant,loadCompanies]);
+
+  if(loading)return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#888",fontSize:13}}>A carregar...</div>;
+  if(!user)return <AuthPage/>;
+
+  const navItems=[{k:"import",l:"Importar"},{k:"dashboard",l:"Dashboard"},{k:"review",l:"Opportunity Review"},{k:"validation",l:"Validação"},{k:"settings",l:"Configurações"},...(isAdmin?[{k:"admin",l:"Admin ⚡"}]:[])];
+
+  async function handleCSV(e) {
+    const file=e.target.files[0];if(!file)return;
+    const text=await file.text();const rows=parseCSV(text);
+    if(!rows.length){showToast("Nenhum dado encontrado","error");return;}
+    setDataLoading(true);
+    const toInsert=rows.map(r=>({tenant_id:tenant.id,name:r.name,website:r.website||null,category:r.category||null,subcategory:r.subcategory||null,city:r.city||null,state_region:r.state_region||null,country:r.country||"Portugal",source_type:"csv",status:"new",imported_by:user.id}));
+    const{error}=await supabase.from("companies").insert(toInsert);
+    if(error)showToast("Erro: "+error.message,"error");
+    else{await logEvent("company.imported","company",null,{count:rows.length});showToast(rows.length+" empresa(s) importada(s)!","success");await loadCompanies();setPage("dashboard");}
+    setDataLoading(false);e.target.value="";
+  }
+
+  async function addManual(name,website,category,city,country) {
+    if(!name){showToast("Informe o nome","warning");return;}
+    const{error}=await supabase.from("companies").insert({tenant_id:tenant.id,name,website:website||null,category:category||null,city:city||null,country:country||"Portugal",source_type:"manual",status:"new",imported_by:user.id});
+    if(error)showToast("Erro: "+error.message,"error");
+    else{await logEvent("company.imported","company",null,{name,source:"manual"});showToast("Empresa adicionada!","success");await loadCompanies();}
+  }
+
+  async function enrichCompany(company) {
+    if(enrichingId===company.id)return;
+    setEnrichingId(company.id);
+    await supabase.from("companies").update({status:"enriching"}).eq("id",company.id);
+    const domain=(company.website||"empresa.pt").replace(/https?:\/\//,"").split("/")[0];
+    const mock={tenant_id:tenant.id,company_id:company.id,website_title:`${company.name} | ${company.category||"Saúde & Bem-Estar"}`,meta_description:`${company.name} - ${company.category||"especialistas em saúde"} em ${company.city||"Portugal"}.`,h1_main:company.name,visible_content:`${company.name} é uma referência em ${company.category||"nutrição e bem-estar"} ${company.city?"em "+company.city:"em Portugal"}. Trabalhamos com as melhores marcas, incluindo suplementos, vitaminas, proteínas e colágenos. ${Math.random()>0.5?"Dispomos de loja física e online.":"Condições especiais para parceiros e revendedores."}`,email:`geral@${domain}`,phone:`+351 9${Math.floor(Math.random()*2)+1} ${Math.floor(Math.random()*9000000+1000000)}`,instagram:Math.random()>0.3?`@${company.name.toLowerCase().replace(/\s+/g,"").replace(/[^a-z0-9]/g,"")}`:null,linkedin:Math.random()>0.5?`linkedin.com/company/${company.name.toLowerCase().replace(/\s+/g,"-")}`:null,facebook:Math.random()>0.4?`facebook.com/${company.name.toLowerCase().replace(/\s+/g,"")}`:null,whatsapp:Math.random()>0.6?`+351 91 ${Math.floor(Math.random()*9000000+1000000)}`:null,contact_page_url:company.website?`${company.website}/contactos`:null,enrichment_status:"done"};
+    await supabase.from("company_enrichment").upsert(mock,{onConflict:"company_id"});
+    const scores=computeScores(mock,tenant);
+    await supabase.from("company_scoring").upsert({tenant_id:tenant.id,company_id:company.id,...scores},{onConflict:"company_id"});
+    const signals=detectSignals(mock);
+    await supabase.from("company_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
+    const ai=await callClaudeAI(company,mock,tenant);
+    await supabase.from("company_ai_analysis").upsert({tenant_id:tenant.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
+    await supabase.from("companies").update({status:"scored"}).eq("id",company.id);
+    await logEvent("company.enriched","company",company.id,{score:scores.finalScore,class:scores.scoreClass});
+    setEnrichingId(null);await loadCompanies();
+    showToast(`${company.name} · Score ${scores.finalScore} (${scores.scoreClass})`,"success");
+  }
+
+  async function enrichAll() {
+    const pending=companies.filter(c=>c.status==="new");
+    if(!pending.length){showToast("Sem empresas novas","warning");return;}
+    showToast(`A enriquecer ${Math.min(pending.length,8)} empresa(s)...`,"info");
+    for(const c of pending.slice(0,8))await enrichCompany(c);
+  }
+
+  async function submitValidation(companyId,rating,aiScore) {
+    if(!reviewerName.trim()){showToast("Informe o seu nome","warning");return;}
+    const{error}=await supabase.from("score_validations").insert({tenant_id:tenant.id,company_id:companyId,reviewer_id:user.id,ai_score:aiScore,human_rating:rating});
+    if(error)showToast("Erro ao guardar","error");
+    else{setValidations(v=>({...v,[companyId]:rating}));await logEvent("validation.submitted","company",companyId,{rating,ai_score:aiScore});showToast("Avaliação guardada!","success");}
+  }
+
+  const top20=companies.filter(c=>c.final_score!=null).slice(0,20);
+  const filtered=filterClass==="all"?companies:companies.filter(c=>c.score_class===filterClass);
+
+  const CS={nav:{background:"#fff",borderBottom:"0.5px solid #e5e5e5",padding:"0 20px",display:"flex",alignItems:"center",position:"sticky",top:0,zIndex:100},main:{maxWidth:1100,margin:"0 auto",padding:"28px 20px"},card:{background:"#fff",border:"0.5px solid #e5e5e5",borderRadius:12},table:{width:"100%",borderCollapse:"collapse",fontSize:13},th:{padding:"10px 14px",textAlign:"left",fontSize:10,fontWeight:500,color:"#888",textTransform:"uppercase",letterSpacing:0.5,borderBottom:"0.5px solid #e5e5e5"},td:{padding:"10px 14px",borderBottom:"0.5px solid #e5e5e5",color:"#1a1a1a"},metric:{background:"#f5f5f4",borderRadius:8,padding:14},btn:{padding:"7px 14px",borderRadius:8,border:"0.5px solid #ddd",background:"#fff",cursor:"pointer",fontSize:13,color:"#1a1a1a"},btnPrimary:{padding:"9px 20px",borderRadius:8,border:"none",background:"#1a1a1a",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"},input:{padding:"8px 12px",borderRadius:8,border:"0.5px solid #ddd",fontSize:13,background:"#fff",color:"#1a1a1a"},h1:{fontSize:20,fontWeight:500,marginBottom:5},sub:{fontSize:13,color:"#888",marginBottom:24}};
+
+  return (
+    <div style={{minHeight:"100vh",background:"#f5f5f4",fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+      <nav style={CS.nav}>
+        <span style={{fontWeight:600,fontSize:14,marginRight:28,padding:"14px 0",color:"#1a1a1a"}}>Revora Discover</span>
+        {navItems.map(tab=>(
+          <button key={tab.k} onClick={()=>setPage(tab.k)} style={{padding:"14px 12px",background:"none",border:"none",cursor:"pointer",fontSize:13,fontWeight:page===tab.k?500:400,color:page===tab.k?"#1a1a1a":"#888",borderBottom:page===tab.k?"2px solid #1a1a1a":"2px solid transparent"}}>{tab.l}</button>
+        ))}
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
+          {tenant&&<span style={{fontSize:12,color:"#aaa",padding:"3px 8px",background:"#f5f5f4",borderRadius:5}}>{tenant.name}</span>}
+          <span style={{fontSize:12,color:"#888"}}>{profile?.full_name||user?.email}</span>
+          <button onClick={signOut} style={{...CS.btn,fontSize:12,color:"#888"}}>Sair</button>
+        </div>
+      </nav>
+
+      <main style={CS.main}>
+        {page==="admin"&&isAdmin&&<AdminPanel/>}
+        {page==="settings"&&<SettingsPage/>}
+        {page==="import"&&<ImportPage CS={CS} handleCSV={handleCSV} addManual={addManual} loading={dataLoading}/>}
+
+        {page==="dashboard"&&(
+          <div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div><h1 style={CS.h1}>Dashboard</h1><p style={{fontSize:13,color:"#888",margin:0}}>Ordenado por score final</p></div>
+              <div style={{display:"flex",gap:8}}>
+                <button style={CS.btn} onClick={enrichAll}>⚡ Enriquecer novas ({companies.filter(c=>c.status==="new").length})</button>
+                <button style={{...CS.btn,color:"#aaa"}} onClick={loadCompanies}>↺</button>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
+              {[{l:"Total",v:companies.length},{l:"Classe A",v:companies.filter(c=>c.score_class==="A").length},{l:"Classe B",v:companies.filter(c=>c.score_class==="B").length},{l:"Pontuadas",v:companies.filter(c=>c.final_score!=null).length},{l:"Novas",v:companies.filter(c=>c.status==="new").length}].map(m=>(
+                <div key={m.l} style={CS.metric}><div style={{fontSize:11,color:"#888",marginBottom:3}}>{m.l}</div><div style={{fontSize:22,fontWeight:500}}>{m.v}</div></div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:6,marginBottom:12}}>
+              {["all","A","B","C","D"].map(f=>(
+                <button key={f} onClick={()=>setFilterClass(f)} style={{padding:"5px 12px",borderRadius:6,fontSize:12,cursor:"pointer",border:"0.5px solid #ddd",background:filterClass===f?"#1a1a1a":"#fff",color:filterClass===f?"#fff":"#888",fontWeight:filterClass===f?500:400}}>{f==="all"?"Todas":`Classe ${f}`}</button>
+              ))}
+            </div>
+            <div style={{...CS.card,padding:0,overflow:"hidden"}}>
+              {dataLoading?<div style={{padding:40,textAlign:"center",color:"#888",fontSize:13}}>A carregar...</div>
+              :filtered.length===0?<div style={{padding:40,textAlign:"center",color:"#888",fontSize:13}}>Sem empresas. Importe um CSV para começar.</div>
+              :<table style={CS.table}>
+                <thead><tr>{["Empresa","Cidade","Categoria","Score","Classe","Potencial","Ação"].map(h=><th key={h} style={CS.th}>{h}</th>)}</tr></thead>
+                <tbody>{filtered.map((c,i)=>(
+                  <tr key={c.id} style={{background:i%2===0?"transparent":"#fafaf9"}}>
+                    <td style={{...CS.td,fontWeight:500}}>{c.name}</td>
+                    <td style={{...CS.td,color:"#888"}}>{c.city||"—"}</td>
+                    <td style={{...CS.td,color:"#888"}}>{c.category||"—"}</td>
+                    <td style={{...CS.td,fontWeight:500}}>{c.final_score??"—"}</td>
+                    <td style={CS.td}><ClassBadge cls={c.score_class}/></td>
+                    <td style={CS.td}>{c.partnership_potential?<span style={{fontSize:12,color:c.partnership_potential==="alto"?"#3B6D11":c.partnership_potential==="baixo"?"#A32D2D":"#854F0B"}}>{c.partnership_potential}</span>:"—"}</td>
+                    <td style={CS.td}>{c.status==="new"?<button onClick={()=>enrichCompany(c)} disabled={enrichingId===c.id} style={{padding:"3px 10px",borderRadius:5,fontSize:11,border:"0.5px solid #ddd",background:"#fff",cursor:"pointer"}}>{enrichingId===c.id?"...":"Enriquecer"}</button>:<span style={{fontSize:11,color:"#aaa"}}>✓</span>}</td>
+                  </tr>
+                ))}</tbody>
+              </table>}
+            </div>
+          </div>
+        )}
+
+        {page==="review"&&(
+          <div>
+            <h1 style={CS.h1}>Opportunity Review</h1>
+            <p style={CS.sub}>Top {top20.length} oportunidades classificadas pelo sistema.</p>
+            <div style={{marginBottom:20}}>
+              <label style={{fontSize:12,color:"#888",display:"block",marginBottom:5}}>O seu nome</label>
+              <input value={reviewerName} onChange={e=>setReviewerName(e.target.value)} placeholder="Ex: João Silva" style={{...CS.input,width:260}}/>
+            </div>
+            {top20.length===0?<div style={{...CS.card,padding:40,textAlign:"center",color:"#888",fontSize:13}}>Nenhuma empresa pontuada. Vá ao Dashboard e enriqueça as empresas.</div>
+            :top20.map((c,i)=>{
+              const sel=validations[c.id];
+              return(
+                <div key={c.id} style={{...CS.card,padding:"18px 22px",marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:24,height:24,borderRadius:"50%",background:"#f5f5f4",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,color:"#888",flexShrink:0}}>{i+1}</div>
+                      <div><p style={{fontWeight:500,fontSize:14,margin:0}}>{c.name}</p><p style={{fontSize:11,color:"#888",margin:0}}>{[c.city,c.category].filter(Boolean).join(" · ")}</p></div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}><span style={{fontSize:19,fontWeight:500}}>{c.final_score}</span><ClassBadge cls={c.score_class}/></div>
+                  </div>
+                  {c.executive_summary&&<p style={{fontSize:12,color:"#888",background:"#f9f9f8",padding:"8px 12px",borderRadius:8,marginBottom:10,lineHeight:1.5}}>{c.executive_summary}</p>}
+                  {c.recommended_action&&<p style={{fontSize:11,color:"#aaa",marginBottom:10}}>→ {c.recommended_action}</p>}
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {RATINGS.map(r=>(
+                      <button key={r.v} onClick={()=>submitValidation(c.id,r.v,c.final_score)} style={{padding:"5px 12px",borderRadius:8,fontSize:12,cursor:"pointer",border:sel===r.v?`1.5px solid ${r.c}`:"0.5px solid #ddd",background:sel===r.v?r.c+"15":"#fff",color:sel===r.v?r.c:"#888",fontWeight:sel===r.v?500:400}}>{r.l}</button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {page==="validation"&&(
+          <div>
+            <h1 style={CS.h1}>Dashboard de Validação</h1>
+            <p style={CS.sub}>Acurácia por classe · Meta: 70%+ nas Classe A</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:28}}>
+              {[{l:"Avaliadas",v:Object.keys(validations).length},{l:"Excelentes",v:Object.values(validations).filter(v=>v==="excellent").length},{l:"Boas",v:Object.values(validations).filter(v=>v==="good").length},{l:"Ruins",v:Object.values(validations).filter(v=>v==="bad").length},{l:"Revisar",v:Object.values(validations).filter(v=>v==="review_later").length}].map(m=>(
+                <div key={m.l} style={CS.metric}><div style={{fontSize:11,color:"#888",marginBottom:3}}>{m.l}</div><div style={{fontSize:22,fontWeight:500}}>{m.v}</div></div>
+              ))}
+            </div>
+            <h2 style={{fontSize:14,fontWeight:500,marginBottom:14}}>Acurácia por classe</h2>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:28}}>
+              {["A","B","C","D"].map(cls=>{
+                const cfg=CLASS_CFG[cls];const clsCos=companies.filter(c=>c.score_class===cls);const validated=clsCos.filter(c=>validations[c.id]).length;const approved=clsCos.filter(c=>["excellent","good"].includes(validations[c.id])).length;const pct=validated>0?Math.round(approved/validated*100):null;const ok=pct!==null&&pct>=70;
+                return(
+                  <div key={cls} style={{...CS.card,padding:"18px 20px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><ClassBadge cls={cls}/>{pct!==null&&<span style={{fontSize:20,fontWeight:500,color:ok?"#3B6D11":"#A32D2D"}}>{pct}%</span>}</div>
+                    <p style={{fontSize:12,color:"#888",margin:"0 0 2px"}}>{clsCos.length} empresas · {validated} avaliadas</p>
+                    <p style={{fontSize:12,color:"#888",margin:0}}>{approved} aprovadas</p>
+                    {pct!==null&&<div style={{marginTop:10,height:3,borderRadius:3,background:"#f0f0f0"}}><div style={{height:"100%",borderRadius:3,width:pct+"%",background:ok?"#3B6D11":"#A32D2D"}}/></div>}
+                    {cls==="A"&&<p style={{fontSize:10,color:"#bbb",marginTop:6}}>Meta: 70%</p>}
+                  </div>
+                );
+              })}
+            </div>
+            <h2 style={{fontSize:14,fontWeight:500,marginBottom:12}}>Relatório de aprendizado</h2>
+            <div style={{...CS.card,padding:24}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:24}}>
+                <div><p style={{fontSize:13,fontWeight:500,color:"#3B6D11",marginBottom:10}}>✓ Parceiros aprovados possuem</p>{["Instagram ativo com audiência fitness/saúde","Email e contacto direto disponível","Loja física ou e-commerce operacional","Menção a suplementos ou nutrição desportiva","Múltiplas unidades ou presença regional"].map(s=><p key={s} style={{fontSize:12,color:"#888",margin:"3px 0"}}>· {s}</p>)}</div>
+                <div><p style={{fontSize:13,fontWeight:500,color:"#A32D2D",marginBottom:10}}>✗ Reprovados possuem</p>{["Baixa presença digital ou sem redes sociais","Sem contacto disponível no site","Fora do nicho de saúde/nutrição/fitness","Site desatualizado ou sem informação","Sem menção a produtos do segmento"].map(s=><p key={s} style={{fontSize:12,color:"#888",margin:"3px 0"}}>· {s}</p>)}</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+      {toast&&<Toast msg={toast} onClose={()=>setToast(null)}/>}
+    </div>
+  );
+}
+
+export default function App() {
+  return <AuthProvider><AppShell/></AuthProvider>;
+}
