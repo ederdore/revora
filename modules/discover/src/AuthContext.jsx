@@ -11,29 +11,46 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Super-admin: email definido em variável de ambiente
   const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
 
   async function loadUserContext(u) {
-    if (!u) { setUser(null); setProfile(null); setTenant(null); setRole(null); setLoading(false); return; }
+    if (!u) {
+      setUser(null); setProfile(null);
+      setTenant(null); setRole(null);
+      setLoading(false); return;
+    }
 
     setUser(u);
     setIsAdmin(u.email === ADMIN_EMAIL);
 
     // Perfil
-    const { data: prof } = await supabase.from("profiles").select("*").eq("id", u.id).single();
+    const { data: prof } = await supabase
+      .from("profiles").select("*").eq("id", u.id).single();
     setProfile(prof);
 
-    // Tenant e role
-    const { data: membership } = await supabase
+    // Tenant — query directa sem RLS helpers
+    console.log("[Revora] loading tenant for:", u.id);
+
+    const { data: membership, error: memberErr } = await supabase
       .from("tenant_users")
-      .select("role, tenants(*)")
+      .select("role, tenant_id")
       .eq("user_id", u.id)
       .single();
 
-    if (membership) {
-      setTenant(membership.tenants);
+    console.log("[Revora] membership:", membership, "err:", memberErr?.message);
+
+    if (membership?.tenant_id) {
       setRole(membership.role);
+
+      const { data: tenantData, error: tenantErr } = await supabase
+        .from("tenants")
+        .select("*")
+        .eq("id", membership.tenant_id)
+        .single();
+
+      console.log("[Revora] tenant:", tenantData, "err:", tenantErr?.message);
+
+      if (tenantData) setTenant(tenantData);
     }
 
     setLoading(false);
@@ -44,9 +61,9 @@ export function AuthProvider({ children }) {
       loadUserContext(session?.user ?? null);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      loadUserContext(session?.user ?? null);
-    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => { loadUserContext(session?.user ?? null); }
+    );
 
     return () => subscription.unsubscribe();
   }, []);
@@ -81,7 +98,11 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, tenant, role, loading, isAdmin, signIn, signUp, signOut, logEvent }}>
+    <AuthContext.Provider value={{
+      user, profile, tenant, role,
+      loading, isAdmin,
+      signIn, signUp, signOut, logEvent
+    }}>
       {children}
     </AuthContext.Provider>
   );
