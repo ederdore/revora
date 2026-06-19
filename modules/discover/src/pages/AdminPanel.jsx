@@ -283,7 +283,7 @@ export default function AdminPanel() {
                     <td style={S.td}>{t.disc_companies?.[0]?.count||0}</td>
                     <td style={{...S.td,color:"#aaa"}}>{fmtD(t.created_at)}</td>
                     <td style={S.td}>
-                      <div style={{display:"flex",gap:6"}}>
+                      <div style={{display:"flex",gap:6}}>
                         <button style={S.btn} onClick={()=>setEditTenant({...t})}>Editar</button>
                         <button style={S.btnDanger} onClick={async()=>{
                           if(!confirm(`Apagar "${t.name}"?`))return;
