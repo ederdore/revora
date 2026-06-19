@@ -4,6 +4,7 @@ import { supabase } from "./supabaseClient.js";
 import AuthPage from "./pages/AuthPage.jsx";
 import AdminPanel from "./pages/AdminPanel.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
+import { enrichCompanyMock, analyzeCompanyMock, computeScores, rgpdFilter } from "./lib/enrichment.js";
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 const CLASS_CFG = {
@@ -402,20 +403,45 @@ function AppShell() {
     if(enrichingId===company.id)return;
     setEnrichingId(company.id);
     await supabase.from("disc_companies").update({status:"enriching"}).eq("id",company.id);
-    const domain=(company.website||"empresa.pt").replace(/https?:\/\//,"").split("/")[0];
-    const mock={tenant_id:tenant.id,company_id:company.id,website_title:`${company.name} | ${company.category||"Saúde & Bem-Estar"}`,meta_description:`${company.name} - ${company.category||"especialistas em saúde"} em ${company.city||"Portugal"}.`,h1_main:company.name,visible_content:`${company.name} é uma referência em ${company.category||"nutrição e bem-estar"} ${company.city?"em "+company.city:"em Portugal"}. Trabalhamos com as melhores marcas, incluindo suplementos, vitaminas, proteínas e colágenos. ${Math.random()>0.5?"Dispomos de loja física e online.":"Condições especiais para parceiros e revendedores."}`,email:`geral@${domain}`,phone:`+351 9${Math.floor(Math.random()*2)+1} ${Math.floor(Math.random()*9000000+1000000)}`,instagram:Math.random()>0.3?`@${company.name.toLowerCase().replace(/\s+/g,"").replace(/[^a-z0-9]/g,"")}`:null,linkedin:Math.random()>0.5?`linkedin.com/company/${company.name.toLowerCase().replace(/\s+/g,"-")}`:null,facebook:Math.random()>0.4?`facebook.com/${company.name.toLowerCase().replace(/\s+/g,"")}`:null,whatsapp:Math.random()>0.6?`+351 91 ${Math.floor(Math.random()*9000000+1000000)}`:null,contact_page_url:company.website?`${company.website}/contactos`:null,enrichment_status:"done"};
-    await supabase.from("disc_enrichment").upsert(mock,{onConflict:"company_id"});
-    const scores=computeScores(mock,tenant);
-    await supabase.from("disc_scoring").upsert({tenant_id:tenant.id,company_id:company.id,...scores},{onConflict:"company_id"});
-    const signals=detectSignals(mock);
-    await supabase.from("disc_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
-    const ai=await callClaudeAI(company,mock,tenant);
-    await supabase.from("disc_ai_analysis").upsert({tenant_id:tenant.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
-    await supabase.from("disc_companies").update({status:"scored"}).eq("id",company.id);
-    await logEvent("company.enriched","company",company.id,{score:scores.finalScore,class:scores.scoreClass});
-    setEnrichingId(null);await loadCompanies();
-    showToast(`${company.name} · Score ${scores.finalScore} (${scores.scoreClass})`,"success");
+
+    try {
+      // Fase 1: Mock realista por categoria (substitui por Microlink quando disponível)
+      const { enrichment: rawEnrichment, signals } = await enrichCompanyMock(company);
+
+      // RGPD: filtra emails pessoais, marca fonte pública, define retenção
+      const enrichment = rgpdFilter({ ...rawEnrichment, tenant_id:tenant.id, company_id:company.id });
+
+      await supabase.from("disc_enrichment").upsert(enrichment, {onConflict:"company_id"});
+
+      // Scoring com keywords do tenant
+      const scores = computeScores(enrichment, tenant);
+      await supabase.from("disc_scoring").upsert({tenant_id:tenant.id,company_id:company.id,...scores},{onConflict:"company_id"});
+
+      // Sinais detectados
+      await supabase.from("disc_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
+
+      // Fase 1: análise mock · Fase 3: callClaudeAI quando key disponível
+      const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+      let ai;
+      if (apiKey) {
+        ai = await callClaudeAI(company, enrichment, tenant);
+      } else {
+        ai = await analyzeCompanyMock(company, enrichment, tenant);
+      }
+      await supabase.from("disc_ai_analysis").upsert({tenant_id:tenant.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
+
+      await supabase.from("disc_companies").update({status:"scored"}).eq("id",company.id);
+      await logEvent("company.enriched","company",company.id,{score:scores.finalScore,class:scores.scoreClass});
+      showToast(`${company.name} · Score ${scores.finalScore} (Classe ${scores.scoreClass})`,"success");
+    } catch(err) {
+      await supabase.from("disc_companies").update({status:"new"}).eq("id",company.id);
+      showToast(`Erro ao enriquecer ${company.name}: ${err.message}`,"error");
+    } finally {
+      setEnrichingId(null);
+      await loadCompanies();
+    }
   }
+
 
   async function enrichAll() {
     const pending=companies.filter(c=>c.status==="new");
