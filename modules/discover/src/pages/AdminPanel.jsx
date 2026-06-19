@@ -577,9 +577,6 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
 
         {/* ── LIMITES & CUSTOS IA ──────────────────────────── */}
         {tab==="limits"&&(
@@ -671,3 +668,7 @@ export default function AdminPanel() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
