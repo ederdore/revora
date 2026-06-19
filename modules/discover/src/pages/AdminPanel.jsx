@@ -10,11 +10,26 @@ const PLAN_CFG = {
 };
 
 const DEFAULT_COSTS = [
-  { id:1, label:"Netlify",       category:"infra",  amount:0,  recurring:true  },
-  { id:2, label:"Supabase",      category:"infra",  amount:0,  recurring:true  },
-  { id:3, label:"Anthropic API", category:"ia",     amount:0,  recurring:false },
-  { id:4, label:"Domínio",       category:"infra",  amount:12, recurring:false },
+  { id:1, label:"Netlify",       category:"infra", amount:0,  frequency:"monthly"  },
+  { id:2, label:"Supabase",      category:"infra", amount:0,  frequency:"monthly"  },
+  { id:3, label:"Anthropic API", category:"ia",    amount:0,  frequency:"variable" },
+  { id:4, label:"Domínio",       category:"infra", amount:12, frequency:"annual"   },
 ];
+
+// Converte qualquer custo para equivalente mensal
+function toMonthly(cost) {
+  const v = Number(cost.amount)||0;
+  if (cost.frequency==="annual")   return v/12;
+  if (cost.frequency==="one_time") return 0; // não entra no MRR
+  return v; // monthly ou variable
+}
+
+const FREQ_LABELS = {
+  monthly:  { l:"Mensal",    sub:"por mês"      },
+  annual:   { l:"Anual",     sub:"÷12 por mês"  },
+  variable: { l:"Variável",  sub:"estimativa"   },
+  one_time: { l:"Único",     sub:"não recorrente"},
+};
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
@@ -94,8 +109,11 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(true);
   const [editTenant, setEditTenant] = useState(null);
   const [editCost, setEditCost] = useState(null);
-  const [newCost, setNewCost] = useState({label:"",category:"infra",amount:"",recurring:true});
+  const [newCost, setNewCost] = useState({label:"",category:"infra",amount:"",frequency:"monthly"});
   const [showNewCost, setShowNewCost] = useState(false);
+  const [planLimits, setPlanLimits] = useState([]);
+  const [usageSummaries, setUsageSummaries] = useState([]);
+  const [editPlan, setEditPlan] = useState(null);
 
   useEffect(()=>{ loadAll(); },[]);
 
@@ -107,6 +125,13 @@ export default function AdminPanel() {
     ]);
     setTenants(ts||[]);
     setEvents(evs||[]);
+    // Load plan limits and usage
+    const [{ data:pl },{ data:us }] = await Promise.all([
+      supabase.from("plan_limits").select("*").order("price_eur"),
+      supabase.from("tenant_usage_summary").select("*"),
+    ]);
+    setPlanLimits(pl||[]);
+    setUsageSummaries(us||[]);
     setLoading(false);
   }
 
@@ -126,9 +151,12 @@ export default function AdminPanel() {
   const mrr = active.reduce((sum,t)=>{
     return sum + (PLAN_CFG[t.plan]?.price||0);
   },0);
-  const monthlyFixed = costs.filter(c=>c.recurring).reduce((a,b)=>a+Number(b.amount),0);
-  const monthlyVariable = costs.filter(c=>!c.recurring).reduce((a,b)=>a+Number(b.amount),0);
-  const totalCosts = monthlyFixed + monthlyVariable;
+  // Custo mensal efectivo — anuais divididos por 12, únicos ignorados
+  const totalCosts = costs.reduce((sum,c)=>sum+toMonthly(c),0);
+  const annualCosts = costs.filter(c=>c.frequency==="annual").reduce((a,c)=>a+Number(c.amount),0);
+  const monthlyCosts = costs.filter(c=>c.frequency==="monthly").reduce((a,c)=>a+Number(c.amount),0);
+  const variableCosts = costs.filter(c=>c.frequency==="variable").reduce((a,c)=>a+Number(c.amount),0);
+  const oneTimeCosts = costs.filter(c=>c.frequency==="one_time").reduce((a,c)=>a+Number(c.amount),0);
   const margin = mrr - totalCosts;
   const marginPct = mrr>0 ? Math.round((margin/mrr)*100) : 0;
   const breakEvenClients = totalCosts>0 ? Math.ceil(totalCosts/((PLAN_CFG.starter.price+PLAN_CFG.pro.price)/2)) : 0;
@@ -200,6 +228,7 @@ export default function AdminPanel() {
     {k:"subscriptions",l:"Assinaturas"},
     {k:"margin",l:"Margem"},
     {k:"funnel",l:"Funil de Activação"},
+    {k:"limits",l:"Limites & Custos IA"},
   ];
 
   return (
@@ -380,11 +409,14 @@ export default function AdminPanel() {
               {costs.map(cost=>(
                 <div key={cost.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:"0.5px solid #f0f0f0"}}>
                   {editCost?.id===cost.id?(
-                    <div style={{display:"flex",gap:8,flex:1,alignItems:"center"}}>
+                    <div style={{display:"flex",gap:8,flex:1,alignItems:"center",flexWrap:"wrap"}}>
                       <input style={{...S.input,width:120}} value={editCost.label} onChange={e=>setEditCost({...editCost,label:e.target.value})}/>
                       <input style={{...S.input,width:70}} type="number" value={editCost.amount} onChange={e=>setEditCost({...editCost,amount:e.target.value})} placeholder="€"/>
-                      <select style={{...S.input,width:90}} value={editCost.recurring?"1":"0"} onChange={e=>setEditCost({...editCost,recurring:e.target.value==="1"})}>
-                        <option value="1">Fixo</option><option value="0">Variável</option>
+                      <select style={{...S.input,width:110}} value={editCost.frequency||"monthly"} onChange={e=>setEditCost({...editCost,frequency:e.target.value})}>
+                        <option value="monthly">Mensal</option>
+                        <option value="annual">Anual</option>
+                        <option value="variable">Variável</option>
+                        <option value="one_time">Único</option>
                       </select>
                       <button style={S.btnPrimary} onClick={()=>{saveCosts(costs.map(c=>c.id===editCost.id?editCost:c));setEditCost(null);}}>✓</button>
                       <button style={S.btn} onClick={()=>setEditCost(null)}>✕</button>
@@ -393,10 +425,15 @@ export default function AdminPanel() {
                     <>
                       <div>
                         <span style={{fontSize:13,fontWeight:500}}>{cost.label}</span>
-                        <span style={{fontSize:11,color:"#aaa",marginLeft:8}}>{cost.recurring?"Fixo":"Variável"}</span>
+                        <span style={{fontSize:11,color:"#aaa",marginLeft:8}}>{FREQ_LABELS[cost.frequency||"monthly"]?.l||"Mensal"}</span>
+                        {cost.frequency==="annual"&&<span style={{fontSize:10,color:"#185FA5",marginLeft:6}}>({fmt(cost.amount)}/ano)</span>}
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:10}}>
-                        <span style={{fontSize:14,fontWeight:500}}>{fmt(cost.amount)}<span style={{fontSize:10,color:"#aaa"}}>/mês</span></span>
+                        <div style={{textAlign:"right"}}>
+                          <span style={{fontSize:14,fontWeight:500}}>{fmt(toMonthly(cost))}</span>
+                          <span style={{fontSize:10,color:"#aaa"}}>/mês</span>
+                          {cost.frequency==="one_time"&&<span style={{fontSize:10,color:"#aaa",display:"block"}}>não recorrente</span>}
+                        </div>
                         <button style={{...S.btn,padding:"3px 8px"}} onClick={()=>setEditCost({...cost})}>✏</button>
                         <button style={{...S.btnDanger,padding:"3px 8px"}} onClick={()=>saveCosts(costs.filter(c=>c.id!==cost.id))}>✕</button>
                       </div>
@@ -407,18 +444,27 @@ export default function AdminPanel() {
 
               {showNewCost&&(
                 <div style={{marginTop:12,padding:12,background:"#f9f9f8",borderRadius:8}}>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 80px 90px",gap:8,marginBottom:8}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 80px 110px",gap:8,marginBottom:8}}>
                     <input style={S.input} placeholder="Nome do custo" value={newCost.label} onChange={e=>setNewCost({...newCost,label:e.target.value})}/>
                     <input style={S.input} type="number" placeholder="€" value={newCost.amount} onChange={e=>setNewCost({...newCost,amount:e.target.value})}/>
-                    <select style={S.input} value={newCost.recurring?"1":"0"} onChange={e=>setNewCost({...newCost,recurring:e.target.value==="1"})}>
-                      <option value="1">Fixo</option><option value="0">Variável</option>
+                    <select style={S.input} value={newCost.frequency} onChange={e=>setNewCost({...newCost,frequency:e.target.value})}>
+                      <option value="monthly">Mensal</option>
+                      <option value="annual">Anual</option>
+                      <option value="variable">Variável</option>
+                      <option value="one_time">Único</option>
                     </select>
                   </div>
+                  {newCost.frequency==="annual"&&newCost.amount&&(
+                    <p style={{fontSize:11,color:"#185FA5",marginBottom:8}}>≈ {fmt(Number(newCost.amount)/12)}/mês no cálculo de margem</p>
+                  )}
+                  {newCost.frequency==="one_time"&&(
+                    <p style={{fontSize:11,color:"#aaa",marginBottom:8}}>Custo único — não entra no cálculo de margem mensal</p>
+                  )}
                   <div style={{display:"flex",gap:8}}>
                     <button style={S.btnPrimary} onClick={()=>{
                       if(!newCost.label)return;
                       saveCosts([...costs,{...newCost,id:Date.now(),amount:Number(newCost.amount)||0}]);
-                      setNewCost({label:"",category:"infra",amount:"",recurring:true});
+                      setNewCost({label:"",category:"infra",amount:"",frequency:"monthly"});
                       setShowNewCost(false);
                     }}>Adicionar</button>
                     <button style={S.btn} onClick={()=>setShowNewCost(false)}>Cancelar</button>
@@ -426,9 +472,29 @@ export default function AdminPanel() {
                 </div>
               )}
 
-              <div style={{marginTop:14,paddingTop:12,borderTop:"0.5px solid #e5e5e5",display:"flex",justifyContent:"space-between"}}>
-                <span style={{fontSize:13,color:"#888"}}>Total mensal</span>
-                <span style={{fontSize:15,fontWeight:500}}>{fmt(totalCosts)}/mês</span>
+              <div style={{marginTop:14,paddingTop:12,borderTop:"0.5px solid #e5e5e5"}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <span style={{fontSize:12,color:"#aaa"}}>Mensais fixos</span>
+                  <span style={{fontSize:12,color:"#888"}}>{fmt(monthlyCosts)}/mês</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <span style={{fontSize:12,color:"#aaa"}}>Anuais (÷12)</span>
+                  <span style={{fontSize:12,color:"#888"}}>{fmt(annualCosts/12)}/mês</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                  <span style={{fontSize:12,color:"#aaa"}}>Variáveis estimados</span>
+                  <span style={{fontSize:12,color:"#888"}}>{fmt(variableCosts)}/mês</span>
+                </div>
+                {oneTimeCosts>0&&(
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                    <span style={{fontSize:12,color:"#aaa"}}>Únicos (não recorrentes)</span>
+                    <span style={{fontSize:12,color:"#aaa"}}>{fmt(oneTimeCosts)}</span>
+                  </div>
+                )}
+                <div style={{display:"flex",justifyContent:"space-between",paddingTop:8,borderTop:"0.5px solid #e5e5e5",marginTop:4}}>
+                  <span style={{fontSize:13,color:"#888",fontWeight:500}}>Total mensal efectivo</span>
+                  <span style={{fontSize:15,fontWeight:500}}>{fmt(totalCosts)}/mês</span>
+                </div>
               </div>
             </div>
 
@@ -514,3 +580,94 @@ export default function AdminPanel() {
     </div>
   );
 }
+
+        {/* ── LIMITES & CUSTOS IA ──────────────────────────── */}
+        {tab==="limits"&&(
+          <div>
+            {/* PLANOS E LIMITES */}
+            <div style={{...S.card,marginBottom:20}}>
+              <p style={{...S.sTitle}}>Limites por plano</p>
+              <p style={{fontSize:12,color:"#aaa",marginBottom:16}}>Margem de segurança define quantas pesquisas reais o cliente pode fazer. Ex: 500 pesquisas × 60% = 300 permitidas.</p>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead><tr>{["Plano","Preço/mês","Pesquisas/mês","Margem %","Permitidas","Custo Google","Custo IA","Margem €",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {(planLimits.length?planLimits:Object.entries(PLAN_CFG).map(([k,v])=>({plan:k,price_eur:v.price,searches_month:({trial:20,starter:200,pro:500,enterprise:2000})[k],margin_pct:0.6}))).map((pl,i)=>{
+                    const allowed=Math.floor(pl.searches_month*(pl.margin_pct||0.6));
+                    const costGoogle=(allowed*0.032).toFixed(2);
+                    const costAI=(allowed*0.007).toFixed(2);
+                    const totalCostPl=Number(costGoogle)+Number(costAI);
+                    const marginEur=(pl.price_eur-totalCostPl-costs.reduce((s,c)=>s+toMonthly(c),0)).toFixed(0);
+                    const isEditing=editPlan?.plan===pl.plan;
+                    return(
+                      <tr key={pl.plan} style={{background:i%2===0?"transparent":"#fafaf9"}}>
+                        <td style={S.td}><Badge plan={pl.plan}/></td>
+                        <td style={S.td}>€{pl.price_eur}</td>
+                        <td style={S.td}>{isEditing?<input style={{...S.input,width:70}} type="number" value={editPlan.searches_month} onChange={e=>setEditPlan({...editPlan,searches_month:Number(e.target.value)})}/>:pl.searches_month}</td>
+                        <td style={S.td}>{isEditing?<input style={{...S.input,width:60}} type="number" step="0.05" min="0.1" max="1" value={editPlan.margin_pct} onChange={e=>setEditPlan({...editPlan,margin_pct:Number(e.target.value)})}/>:`${Math.round((pl.margin_pct||0.6)*100)}%`}</td>
+                        <td style={{...S.td,fontWeight:500}}>{allowed}</td>
+                        <td style={{...S.td,color:"#888"}}>${costGoogle}</td>
+                        <td style={{...S.td,color:"#888"}}>${costAI}</td>
+                        <td style={{...S.td,fontWeight:500,color:Number(marginEur)>=0?"#3B6D11":"#A32D2D"}}>€{marginEur}</td>
+                        <td style={S.td}>
+                          {isEditing?(
+                            <div style={{display:"flex",gap:6}}>
+                              <button style={S.btnPrimary} onClick={async()=>{
+                                await supabase.from("plan_limits").upsert({plan:editPlan.plan,searches_month:editPlan.searches_month,margin_pct:editPlan.margin_pct,price_eur:editPlan.price_eur},{onConflict:"plan"});
+                                setEditPlan(null);loadAll();
+                              }}>✓</button>
+                              <button style={S.btn} onClick={()=>setEditPlan(null)}>✕</button>
+                            </div>
+                          ):(
+                            <button style={S.btn} onClick={()=>setEditPlan({...pl})}>✏</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* USO POR TENANT */}
+            <div style={S.card}>
+              <p style={S.sTitle}>Uso actual por cliente</p>
+              {usageSummaries.length===0?(
+                <p style={{fontSize:13,color:"#aaa"}}>Sem dados de uso ainda.</p>
+              ):(
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                  <thead><tr>{["Cliente","Plano","Pesquisas","Permitidas","Uso %","Custo IA ($)","Estado","Reset"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {usageSummaries.map((u,i)=>{
+                      const color=u.usage_status==="blocked"?"#A32D2D":u.usage_status==="warning"?"#854F0B":"#3B6D11";
+                      return(
+                        <tr key={u.tenant_id} style={{background:i%2===0?"transparent":"#fafaf9"}}>
+                          <td style={{...S.td,fontWeight:500}}>{u.name}</td>
+                          <td style={S.td}><Badge plan={u.plan}/></td>
+                          <td style={S.td}>{u.cycle_searches||0}</td>
+                          <td style={S.td}>{u.searches_allowed||0}</td>
+                          <td style={S.td}>
+                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                              <div style={{width:60,height:4,borderRadius:4,background:"#f0f0f0",overflow:"hidden"}}>
+                                <div style={{height:"100%",width:Math.min(100,u.usage_pct||0)+"%",background:color,borderRadius:4}}/>
+                              </div>
+                              <span style={{fontSize:11,color,fontWeight:500}}>{u.usage_pct||0}%</span>
+                            </div>
+                          </td>
+                          <td style={{...S.td,color:"#888"}}>${Number(u.cycle_cost_usd||0).toFixed(4)}</td>
+                          <td style={S.td}>
+                            <span style={{fontSize:11,fontWeight:500,color,background:color+"15",padding:"2px 8px",borderRadius:4}}>
+                              {u.usage_status==="blocked"?"🔒 Bloqueado":u.usage_status==="warning"?"⚠ Aviso":"✓ Ok"}
+                            </span>
+                          </td>
+                          <td style={{...S.td,color:"#aaa",fontSize:11}}>
+                            {u.cycle_resets_at?new Date(u.cycle_resets_at).toLocaleDateString("pt-PT"):"—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}

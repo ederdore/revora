@@ -5,6 +5,8 @@ import AuthPage from "./pages/AuthPage.jsx";
 import AdminPanel from "./pages/AdminPanel.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import { enrichCompanyMock, analyzeCompanyMock, computeScores, rgpdFilter } from "./lib/enrichment.js";
+import { canSearch, logUsage, PLAN_LIMITS } from "./lib/usage.js";
+import { UsageMeterNav, UsageMeterFull } from "./components/UsageMeter.jsx";
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 const CLASS_CFG = {
@@ -252,6 +254,11 @@ function ProfilePage({CS}) {
         </div>
       </div>
 
+      {/* USO DO CICLO */}
+      <div style={{marginBottom:16}}>
+        <UsageMeterFull tenantId={tenant?.id}/>
+      </div>
+
       {/* PLANO */}
       <div style={{...CS.card,padding:24,marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -402,6 +409,15 @@ function AppShell() {
   async function enrichCompany(company) {
     if(enrichingId===company.id)return;
     setEnrichingId(company.id);
+
+    // Verifica limite de uso antes de avançar
+    const usage = await canSearch(tenant.id);
+    if (usage.usage_status === "blocked") {
+      setEnrichingId(null);
+      showToast("Limite de pesquisas atingido. Upload CSV disponível ou aguarda o próximo ciclo.", "warning");
+      return;
+    }
+
     await supabase.from("disc_companies").update({status:"enriching"}).eq("id",company.id);
 
     try {
@@ -432,6 +448,12 @@ function AppShell() {
 
       await supabase.from("disc_companies").update({status:"scored"}).eq("id",company.id);
       await logEvent("company.enriched","company",company.id,{score:scores.finalScore,class:scores.scoreClass});
+      // Regista uso para controlo de limites e custos reais
+      await logUsage(tenant.id, "microlink", company.id);
+      await logUsage(tenant.id, "ai_analysis", company.id,
+        apiKey ? 800 : 0,   // tokens_input estimados
+        apiKey ? 300 : 0    // tokens_output estimados
+      );
       showToast(`${company.name} · Score ${scores.finalScore} (Classe ${scores.scoreClass})`,"success");
     } catch(err) {
       await supabase.from("disc_companies").update({status:"new"}).eq("id",company.id);
@@ -483,6 +505,7 @@ function AppShell() {
         ))}
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
           {tenant&&<span style={{fontSize:12,color:"#aaa",padding:"3px 8px",background:"#f5f5f4",borderRadius:5}}>{tenant.name}</span>}
+          <UsageMeterNav tenantId={tenant?.id}/>
           <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#888",textDecoration:"none",padding:"5px 10px",border:"0.5px solid #ddd",borderRadius:6}}>⭐ Feedback</a>
           <button onClick={signOut} style={{...CS.btn,fontSize:12,color:"#888"}}>Sair</button>
         </div>
