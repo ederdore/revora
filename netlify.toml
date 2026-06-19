@@ -1,0 +1,12 @@
+[build]
+  base    = "modules/discover"
+  command = "npm run build"
+  publish = "modules/discover/dist"
+
+[functions]
+  directory = "modules/discover/netlify/functions"
+
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

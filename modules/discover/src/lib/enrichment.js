@@ -209,11 +209,24 @@ export function isCorporateEmail(email) {
 }
 
 export function rgpdFilter(enrichment) {
-  return {
-    ...enrichment,
-    email: enrichment.email && isCorporateEmail(enrichment.email) ? enrichment.email : null,
-    rgpd_public: true,
-    data_source: "public_web",
-    retention_until: new Date(Date.now()+365*24*60*60*1000).toISOString(),
+  // Filtra email pessoal (RGPD) e remove campos opcionais
+  // que podem não existir na tabela se a migration ainda não correu
+  const { company_id, tenant_id, enrichment_status, ...rest } = enrichment;
+  const filtered = {
+    company_id,
+    tenant_id,
+    enrichment_status,
+    website_title:    rest.website_title    || null,
+    meta_description: rest.meta_description || null,
+    h1_main:          rest.h1_main          || null,
+    visible_content:  rest.visible_content  || null,
+    email:            rest.email && isCorporateEmail(rest.email) ? rest.email : null,
+    phone:            rest.phone            || null,
+    instagram:        rest.instagram        || null,
+    linkedin:         rest.linkedin         || null,
+    facebook:         rest.facebook         || null,
+    whatsapp:         rest.whatsapp         || null,
+    contact_page_url: rest.contact_page_url || null,
   };
+  return filtered;
 }

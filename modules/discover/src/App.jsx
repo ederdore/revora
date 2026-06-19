@@ -29,17 +29,50 @@ const PLAN_CFG = {
 const FEEDBACK_URL = import.meta.env.VITE_FEEDBACK_URL || "https://starloop.vercel.app";
 
 async function callClaudeAI(company, enrichment, tenant) {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-  if (!apiKey) return {executive_summary:"Chave Anthropic não configurada. Adicione VITE_ANTHROPIC_API_KEY nas variáveis de ambiente do Netlify.",strengths:[],weaknesses:[],partnership_potential:"médio",recommended_action:"Configurar API key para análise IA.",confidence_score:0};
-  const ctx = tenant?.ai_prompt_context||"Avalia o potencial comercial desta empresa como parceiro de distribuição/revenda.";
-  const biz = tenant?.business_context||"Empresa de suplementos nutricionais premium.";
-  const prompt = `És um analista comercial especializado em parcerias B2B em Portugal.\n\nContexto: ${biz}\nInstrução: ${ctx}\n\nEmpresa:\nNome: ${company.name}\nWebsite: ${company.website||"—"}\nCategoria: ${company.category||"—"}\nCidade: ${company.city||"—"}\nTítulo: ${enrichment.website_title||"—"}\nDescrição: ${enrichment.meta_description||"—"}\nConteúdo: ${(enrichment.visible_content||"").substring(0,600)}\nInstagram: ${enrichment.instagram||"não"}\nEmail: ${enrichment.email||"não"}\n\nResponde APENAS com JSON sem markdown:\n{"executive_summary":"2-3 frases","strengths":["s1","s2"],"weaknesses":["w1"],"partnership_potential":"alto|médio|baixo","recommended_action":"ação concreta","confidence_score":70}`;
+  const ctx = tenant?.ai_prompt_context || "Avalia o potencial comercial desta empresa como parceiro de distribuição/revenda.";
+  const biz = tenant?.business_context || "Empresa de suplementos nutricionais premium.";
+  const prompt = `És um analista comercial especializado em parcerias B2B em Portugal.
+
+Contexto: ${biz}
+Instrução: ${ctx}
+
+Empresa:
+Nome: ${company.name}
+Website: ${company.website || "—"}
+Categoria: ${company.category || "—"}
+Cidade: ${company.city || "—"}
+Título: ${enrichment.website_title || "—"}
+Descrição: ${enrichment.meta_description || "—"}
+Conteúdo: ${(enrichment.visible_content || "").substring(0, 600)}
+Instagram: ${enrichment.instagram || "não"}
+Email: ${enrichment.email || "não"}
+
+Responde APENAS com JSON sem markdown:
+{"executive_summary":"2-3 frases","strengths":["s1","s2"],"weaknesses":["w1"],"partnership_potential":"alto|médio|baixo","recommended_action":"ação concreta","confidence_score":70}`;
+
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-calls":"true"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:prompt}]})});
+    // Chama via Netlify Function (resolve CORS em produção)
+    const res = await fetch("/.netlify/functions/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
     const data = await res.json();
-    const text = data.content?.map(b=>b.text||"").join("")||"{}";
-    return JSON.parse(text.replace(/```json|```/g,"").trim());
-  } catch { return {executive_summary:"Análise indisponível.",strengths:[],weaknesses:[],partnership_potential:"médio",recommended_action:"Contactar para qualificação.",confidence_score:50}; }
+    const text = data.content?.map(b => b.text || "").join("") || "{}";
+    return JSON.parse(text.replace(/```json|```/g, "").trim());
+  } catch {
+    return {
+      executive_summary: "Análise IA indisponível.",
+      strengths: [], weaknesses: [],
+      partnership_potential: "médio",
+      recommended_action: "Contactar para qualificação inicial.",
+      confidence_score: 0,
+    };
+  }
 }
 
 function parseCSV(text) {
@@ -404,12 +437,13 @@ function AppShell() {
       // Sinais detectados
       await supabase.from("disc_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
 
-      // Fase 1: análise mock · Fase 3: callClaudeAI quando key disponível
-      const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+      // Tenta análise IA via Netlify Function
+      // Se falhar (sem key configurada no servidor), usa mock
       let ai;
-      if (apiKey) {
+      try {
         ai = await callClaudeAI(company, enrichment, tenant);
-      } else {
+        if (!ai.executive_summary || ai.confidence_score === 0) throw new Error("fallback");
+      } catch {
         ai = await analyzeCompanyMock(company, enrichment, tenant);
       }
       await supabase.from("disc_ai_analysis").upsert({tenant_id:tenant.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
@@ -418,10 +452,7 @@ function AppShell() {
       await logEvent("company.enriched","company",company.id,{score:scores.finalScore,class:scores.scoreClass});
       // Regista uso para controlo de limites e custos reais
       await logUsage(tenant.id, "microlink", company.id);
-      await logUsage(tenant.id, "ai_analysis", company.id,
-        apiKey ? 800 : 0,   // tokens_input estimados
-        apiKey ? 300 : 0    // tokens_output estimados
-      );
+      await logUsage(tenant.id, "ai_analysis", company.id, 800, 300);
       showToast(`${company.name} · Score ${scores.finalScore} (Classe ${scores.scoreClass})`,"success");
     } catch(err) {
       await supabase.from("disc_companies").update({status:"new"}).eq("id",company.id);
