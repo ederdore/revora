@@ -1,10 +1,9 @@
-[build]
-  base    = "modules/discover"
-  command = "npm run build"
-  publish = "modules/discover/dist"
+# netlify.toml — na raiz do repo
+# O build base já está configurado na UI do Netlify como modules/discover
+# Este ficheiro só configura as functions e redirects
 
 [functions]
-  directory = "modules/discover/netlify/functions"
+  directory = "netlify/functions"
 
 [[redirects]]
   from   = "/*"
