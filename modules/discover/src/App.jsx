@@ -28,38 +28,6 @@ const PLAN_CFG = {
 };
 const FEEDBACK_URL = import.meta.env.VITE_FEEDBACK_URL || "https://starloop.vercel.app";
 
-// ── SCORING ───────────────────────────────────────────────────
-function computeScores(enrichment, tenant) {
-  const text = ((enrichment.visible_content||"")+" "+(enrichment.meta_description||"")).toLowerCase();
-  const fitKeywords = tenant?.fit_keywords||["ginásio","farmácia","nutricionista","loja natureza","parafarmácia","wellness","suplementos","health club","personal trainer","sports nutrition","clínica","bem-estar","distribuidor","grossista"];
-  const fitMatches = fitKeywords.filter(k=>text.includes(k.toLowerCase())).length;
-  const fitScore = Math.min(100,fitMatches*14+(enrichment.website_title?16:0));
-  const digitalScore = Math.min(100,[enrichment.instagram?30:0,enrichment.linkedin?20:0,enrichment.facebook?15:0,enrichment.website_title?20:0,enrichment.meta_description?15:0].reduce((a,b)=>a+b,0));
-  const contactScore = Math.min(100,[enrichment.email?40:0,enrichment.phone?35:0,enrichment.whatsapp?15:0,enrichment.contact_page_url?10:0].reduce((a,b)=>a+b,0));
-  const authorityScore = Math.min(100,[enrichment.h1_main?.length>10?25:0,enrichment.meta_description?.length>50?25:0,enrichment.linkedin?25:0,enrichment.visible_content?.length>300?25:0].reduce((a,b)=>a+b,0));
-  const finalScore = Math.round(fitScore*0.35+authorityScore*0.25+digitalScore*0.2+contactScore*0.2);
-  const scoreClass = finalScore>=80?"A":finalScore>=60?"B":finalScore>=40?"C":"D";
-  return {fitScore,digitalScore,contactScore,authorityScore,finalScore,scoreClass};
-}
-
-function detectSignals(enrichment) {
-  const t=(enrichment.visible_content||"").toLowerCase();
-  return {
-    has_instagram:!!enrichment.instagram,has_facebook:!!enrichment.facebook,
-    has_linkedin:!!enrichment.linkedin,has_email:!!enrichment.email,
-    has_phone:!!enrichment.phone,has_whatsapp:t.includes("whatsapp")||!!enrichment.whatsapp,
-    has_online_store:t.includes("loja")||t.includes("comprar")||t.includes("shop"),
-    has_blog:t.includes("blog")||t.includes("artigo"),
-    multiple_locations:t.includes("filial")||t.includes("unidades"),
-    custom_signals:{
-      sports_nutrition:t.includes("suplemento")||t.includes("proteína")||t.includes("colágeno"),
-      wellness:t.includes("bem-estar")||t.includes("wellness"),
-      fitness:t.includes("ginásio")||t.includes("fitness"),
-      pharmacy:t.includes("farmácia")||t.includes("parafarmácia"),
-    },
-  };
-}
-
 async function callClaudeAI(company, enrichment, tenant) {
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
   if (!apiKey) return {executive_summary:"Chave Anthropic não configurada. Adicione VITE_ANTHROPIC_API_KEY nas variáveis de ambiente do Netlify.",strengths:[],weaknesses:[],partnership_potential:"médio",recommended_action:"Configurar API key para análise IA.",confidence_score:0};
