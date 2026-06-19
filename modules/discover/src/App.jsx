@@ -112,110 +112,185 @@ function Toast({msg,onClose}) {
 }
 
 // ── COMPANY MODAL ─────────────────────────────────────────────
-function CompanyModal({company,onClose,onValidate,onEnrich,enrichingId,validations}) {
-  const sel = validations[company.id];
+function CompanyModal({company, onClose, onValidate, onEnrich, enrichingId, validations, onSaveNote}) {
+  const sel = validations[company.id] || company.latest_validation;
   const hasAI = !!company.executive_summary;
-  const isEnriching = enrichingId===company.id;
+  const isEnriching = enrichingId === company.id;
+  const [note, setNote] = useState(company._commercial_note || "");
+  const [savingNote, setSavingNote] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
+
+  async function handleSaveNote() {
+    setSavingNote(true);
+    await onSaveNote(company.id, note);
+    setSavingNote(false);
+    setNotesSaved(true);
+    setTimeout(() => setNotesSaved(false), 2000);
+  }
+
+  // Score color
+  const scoreColor = company.score_class === "A" ? "#3B6D11"
+    : company.score_class === "B" ? "#185FA5"
+    : company.score_class === "C" ? "#854F0B" : "#A32D2D";
 
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={onClose}>
-      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:600,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.15)"}} onClick={e=>e.stopPropagation()}>
-        
-        {/* HEADER */}
-        <div style={{padding:"20px 24px",borderBottom:"0.5px solid #e5e5e5",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-          <div>
-            <h2 style={{fontSize:17,fontWeight:500,margin:"0 0 4px"}}>{company.name}</h2>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:640,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 64px rgba(0,0,0,0.18)",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+
+        {/* ── HEADER ── */}
+        <div style={{padding:"18px 22px",borderBottom:"0.5px solid #e5e5e5",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexShrink:0}}>
+          <div style={{flex:1,minWidth:0}}>
+            <h2 style={{fontSize:16,fontWeight:500,margin:"0 0 3px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{company.name}</h2>
             <p style={{fontSize:12,color:"#888",margin:0}}>{[company.city,company.category,company.country].filter(Boolean).join(" · ")}</p>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            {company.final_score!=null&&<span style={{fontSize:22,fontWeight:500}}>{company.final_score}</span>}
+          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0,marginLeft:12}}>
+            {/* SCORE VISÍVEL */}
+            {company.final_score != null && (
+              <div style={{textAlign:"center",background:"#f5f5f4",borderRadius:8,padding:"4px 10px"}}>
+                <div style={{fontSize:20,fontWeight:600,color:scoreColor,lineHeight:1}}>{company.final_score}</div>
+                <div style={{fontSize:9,color:"#aaa",marginTop:1}}>score</div>
+              </div>
+            )}
             <ClassBadge cls={company.score_class}/>
-            <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#aaa",marginLeft:4}}>×</button>
+            {/* BOTÃO REENRIQUECER */}
+            <button onClick={()=>onEnrich(company)} disabled={isEnriching} title="Actualizar dados" style={{padding:"5px 10px",borderRadius:7,border:"0.5px solid #ddd",background:"#fff",cursor:isEnriching?"wait":"pointer",fontSize:12,color:"#888"}}>
+              {isEnriching ? "⏳" : "↺"}
+            </button>
+            <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",color:"#aaa"}}>×</button>
           </div>
         </div>
 
-        <div style={{padding:"20px 24px"}}>
+        <div style={{padding:"18px 22px",overflowY:"auto"}}>
 
-          {/* WEBSITE */}
-          {company.website&&(
-            <div style={{marginBottom:16}}>
-              <a href={company.website} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:"#185FA5",textDecoration:"none"}}>🌐 {company.website}</a>
+          {/* ── WEBSITE + CONTACTOS ── */}
+          <div style={{background:"#f9f9f8",borderRadius:8,padding:"10px 14px",marginBottom:14}}>
+            {company.website && (
+              <a href={company.website} target="_blank" rel="noopener noreferrer"
+                style={{fontSize:12,color:"#185FA5",textDecoration:"none",display:"block",marginBottom:company.email||company.phone?6:0}}>
+                🌐 {company.website}
+              </a>
+            )}
+            <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+              {company.email    && <span style={{fontSize:12,color:"#555"}}>✉ {company.email}</span>}
+              {company.phone    && <span style={{fontSize:12,color:"#555"}}>📞 {company.phone}</span>}
+              {company.instagram && <span style={{fontSize:12,color:"#E1306C"}}>📸 {company.instagram}</span>}
+              {company.whatsapp  && <span style={{fontSize:12,color:"#25D366"}}>💬 {company.whatsapp}</span>}
             </div>
-          )}
+            {!company.website && !company.email && !company.phone && (
+              <p style={{fontSize:12,color:"#bbb",margin:0}}>Sem dados de contacto — enriqueça para obter</p>
+            )}
+          </div>
 
-          {/* CONTACTOS */}
-          {(company.email||company.phone||company.instagram||company.whatsapp)&&(
-            <div style={{background:"#f9f9f8",borderRadius:8,padding:"12px 14px",marginBottom:16,display:"flex",gap:16,flexWrap:"wrap"}}>
-              {company.email&&<span style={{fontSize:12,color:"#555"}}>✉ {company.email}</span>}
-              {company.phone&&<span style={{fontSize:12,color:"#555"}}>📞 {company.phone}</span>}
-              {company.instagram&&<span style={{fontSize:12,color:"#E1306C"}}>📸 {company.instagram}</span>}
-              {company.whatsapp&&<span style={{fontSize:12,color:"#25D366"}}>💬 {company.whatsapp}</span>}
+          {/* ── SCORE DETALHADO ── */}
+          {company.final_score != null ? (
+            <div style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <p style={{fontSize:12,fontWeight:500,margin:0}}>Scoring detalhado</p>
+                <span style={{fontSize:11,color:"#aaa"}}>v{company.model_version||1}</span>
+              </div>
+              <ScoreBar label={`Fit ao nicho`}        value={company.fit_score}       color="#534AB7"/>
+              <ScoreBar label={`Authority`}            value={company.authority_score} color="#185FA5"/>
+              <ScoreBar label={`Presença digital`}    value={company.digital_score}   color="#1D9E75"/>
+              <ScoreBar label={`Facilidade contacto`} value={company.contact_score}   color="#E8A020"/>
             </div>
-          )}
-
-          {/* SCORES */}
-          {company.final_score!=null&&(
-            <div style={{marginBottom:16}}>
-              <p style={{fontSize:12,fontWeight:500,marginBottom:10,color:"#1a1a1a"}}>Scoring</p>
-              <ScoreBar label="Fit" value={company.fit_score} color="#534AB7"/>
-              <ScoreBar label="Authority" value={company.authority_score} color="#185FA5"/>
-              <ScoreBar label="Digital" value={company.digital_score} color="#1D9E75"/>
-              <ScoreBar label="Contact" value={company.contact_score} color="#E8A020"/>
-            </div>
-          )}
-
-          {/* SINAIS */}
-          {company.custom_signals&&(
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
-              {company.has_instagram&&<span style={{fontSize:11,background:"#fce8f1",color:"#E1306C",padding:"2px 8px",borderRadius:4}}>Instagram</span>}
-              {company.has_email&&<span style={{fontSize:11,background:"#e6f1fb",color:"#185FA5",padding:"2px 8px",borderRadius:4}}>Email</span>}
-              {company.has_whatsapp&&<span style={{fontSize:11,background:"#e6faf0",color:"#25D366",padding:"2px 8px",borderRadius:4}}>WhatsApp</span>}
-              {company.has_online_store&&<span style={{fontSize:11,background:"#eaf3de",color:"#3B6D11",padding:"2px 8px",borderRadius:4}}>Loja Online</span>}
-              {company.custom_signals?.fitness&&<span style={{fontSize:11,background:"#eeedfe",color:"#534AB7",padding:"2px 8px",borderRadius:4}}>Fitness</span>}
-              {company.custom_signals?.pharmacy&&<span style={{fontSize:11,background:"#faeeda",color:"#854F0B",padding:"2px 8px",borderRadius:4}}>Farmácia</span>}
-              {company.custom_signals?.sports_nutrition&&<span style={{fontSize:11,background:"#eaf3de",color:"#3B6D11",padding:"2px 8px",borderRadius:4}}>Nutrição Desportiva</span>}
-            </div>
-          )}
-
-          {/* IA ANALYSIS */}
-          {hasAI?(
-            <div style={{background:"#f9f9f8",borderRadius:8,padding:"14px",marginBottom:16}}>
-              <p style={{fontSize:12,fontWeight:500,marginBottom:8}}>Análise IA</p>
-              <p style={{fontSize:12,color:"#555",lineHeight:1.6,marginBottom:10}}>{company.executive_summary}</p>
-              {company.strengths?.length>0&&(
-                <div style={{marginBottom:6}}>
-                  {company.strengths.map(s=><p key={s} style={{fontSize:11,color:"#3B6D11",margin:"2px 0"}}>✓ {s}</p>)}
-                </div>
-              )}
-              {company.weaknesses?.length>0&&(
-                <div style={{marginBottom:8}}>
-                  {company.weaknesses.map(w=><p key={w} style={{fontSize:11,color:"#A32D2D",margin:"2px 0"}}>✗ {w}</p>)}
-                </div>
-              )}
-              {company.recommended_action&&(
-                <p style={{fontSize:12,color:"#185FA5",fontWeight:500,margin:"8px 0 0"}}>→ {company.recommended_action}</p>
-              )}
-            </div>
-          ):(
-            <div style={{background:"#f9f9f8",borderRadius:8,padding:"14px",marginBottom:16,textAlign:"center"}}>
-              <p style={{fontSize:12,color:"#888",marginBottom:10}}>Análise IA ainda não gerada</p>
-              <button onClick={()=>onEnrich(company)} disabled={isEnriching} style={{padding:"6px 14px",borderRadius:7,border:"none",background:"#1a1a1a",color:"#fff",fontSize:12,cursor:isEnriching?"wait":"pointer"}}>
-                {isEnriching?"A analisar...":"⚡ Enriquecer com IA"}
+          ) : (
+            <div style={{background:"#f9f9f8",borderRadius:8,padding:14,marginBottom:14,textAlign:"center"}}>
+              <p style={{fontSize:12,color:"#888",margin:"0 0 8px"}}>Empresa ainda não foi enriquecida</p>
+              <button onClick={()=>onEnrich(company)} disabled={isEnriching}
+                style={{padding:"6px 16px",borderRadius:7,border:"none",background:"#1a1a1a",color:"#fff",fontSize:12,cursor:isEnriching?"wait":"pointer"}}>
+                {isEnriching ? "A analisar..." : "⚡ Enriquecer agora"}
               </button>
             </div>
           )}
 
-          {/* VALIDAÇÃO HUMANA */}
-          <div>
-            <p style={{fontSize:12,fontWeight:500,marginBottom:10}}>Validação comercial</p>
+          {/* ── SINAIS ── */}
+          {(company.has_instagram || company.has_email || company.has_whatsapp || company.has_online_store || company.custom_signals?.fitness || company.custom_signals?.pharmacy || company.custom_signals?.sports_nutrition) && (
+            <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14}}>
+              {company.has_instagram      && <span style={{fontSize:11,background:"#fce8f1",color:"#E1306C",padding:"2px 8px",borderRadius:4}}>Instagram</span>}
+              {company.has_email          && <span style={{fontSize:11,background:"#e6f1fb",color:"#185FA5",padding:"2px 8px",borderRadius:4}}>Email</span>}
+              {company.has_whatsapp       && <span style={{fontSize:11,background:"#e6faf0",color:"#25D366",padding:"2px 8px",borderRadius:4}}>WhatsApp</span>}
+              {company.has_online_store   && <span style={{fontSize:11,background:"#eaf3de",color:"#3B6D11",padding:"2px 8px",borderRadius:4}}>Loja Online</span>}
+              {company.custom_signals?.fitness           && <span style={{fontSize:11,background:"#eeedfe",color:"#534AB7",padding:"2px 8px",borderRadius:4}}>Fitness</span>}
+              {company.custom_signals?.pharmacy          && <span style={{fontSize:11,background:"#faeeda",color:"#854F0B",padding:"2px 8px",borderRadius:4}}>Farmácia</span>}
+              {company.custom_signals?.sports_nutrition  && <span style={{fontSize:11,background:"#eaf3de",color:"#3B6D11",padding:"2px 8px",borderRadius:4}}>Nutrição Desportiva</span>}
+              {company.custom_signals?.wellness          && <span style={{fontSize:11,background:"#f0f0ff",color:"#534AB7",padding:"2px 8px",borderRadius:4}}>Wellness</span>}
+            </div>
+          )}
+
+          {/* ── ANÁLISE IA ── */}
+          {hasAI && (
+            <div style={{background:"#f9f9f8",borderRadius:8,padding:14,marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <p style={{fontSize:12,fontWeight:500,margin:0}}>Análise IA</p>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  {company.confidence_score != null && (
+                    <span style={{fontSize:11,color:"#aaa"}}>confiança: {Math.round(company.confidence_score)}%</span>
+                  )}
+                  <span style={{fontSize:11,color:company.partnership_potential==="alto"?"#3B6D11":company.partnership_potential==="baixo"?"#A32D2D":"#854F0B",fontWeight:500,background:company.partnership_potential==="alto"?"#EAF3DE":company.partnership_potential==="baixo"?"#FCEBEB":"#FAEEDA",padding:"1px 7px",borderRadius:4}}>
+                    {company.partnership_potential}
+                  </span>
+                </div>
+              </div>
+              <p style={{fontSize:12,color:"#555",lineHeight:1.6,marginBottom:10}}>{company.executive_summary}</p>
+              {company.strengths?.length > 0 && (
+                <div style={{marginBottom:6}}>
+                  {company.strengths.map(s => <p key={s} style={{fontSize:11,color:"#3B6D11",margin:"2px 0"}}>✓ {s}</p>)}
+                </div>
+              )}
+              {company.weaknesses?.length > 0 && (
+                <div style={{marginBottom:8}}>
+                  {company.weaknesses.map(w => <p key={w} style={{fontSize:11,color:"#A32D2D",margin:"2px 0"}}>✗ {w}</p>)}
+                </div>
+              )}
+              {company.recommended_action && (
+                <p style={{fontSize:12,color:"#185FA5",fontWeight:500,margin:"8px 0 0",padding:"8px 10px",background:"#E6F1FB",borderRadius:6}}>
+                  → {company.recommended_action}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── ANÁLISE DO COMERCIAL ── */}
+          <div style={{marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <p style={{fontSize:12,fontWeight:500,margin:0}}>Análise do comercial</p>
+              <span style={{fontSize:11,color:"#aaa"}}>Visível só para a equipa</span>
+            </div>
+            <textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="Escreve aqui a tua análise: conheces a empresa? Já foste visitá-la? Tem potencial real? Qual o perfil do responsável?"
+              style={{width:"100%",minHeight:80,padding:"8px 12px",borderRadius:8,border:"0.5px solid #ddd",fontSize:12,lineHeight:1.5,resize:"vertical",fontFamily:"inherit",color:"#1a1a1a",background:"#fff",boxSizing:"border-box"}}
+            />
+            <div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}>
+              <button onClick={handleSaveNote} disabled={savingNote}
+                style={{padding:"5px 14px",borderRadius:6,border:"none",background: notesSaved?"#3B6D11":"#1a1a1a",color:"#fff",fontSize:12,cursor:"pointer",transition:"background 0.2s"}}>
+                {savingNote ? "A guardar..." : notesSaved ? "✓ Guardado" : "Guardar nota"}
+              </button>
+            </div>
+          </div>
+
+          {/* ── VALIDAÇÃO COMERCIAL ── */}
+          <div style={{borderTop:"0.5px solid #f0f0f0",paddingTop:14}}>
+            <p style={{fontSize:12,fontWeight:500,marginBottom:10}}>Classificação comercial</p>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {RATINGS.map(r=>(
-                <button key={r.v} onClick={()=>onValidate(company.id,r.v,company.final_score)} style={{padding:"6px 12px",borderRadius:8,fontSize:12,cursor:"pointer",border:sel===r.v?`1.5px solid ${r.c}`:"0.5px solid #ddd",background:sel===r.v?r.c+"15":"#fff",color:sel===r.v?r.c:"#888",fontWeight:sel===r.v?500:400}}>
+              {RATINGS.map(r => (
+                <button key={r.v}
+                  onClick={() => onValidate(company.id, r.v, company.final_score)}
+                  style={{padding:"6px 12px",borderRadius:8,fontSize:12,cursor:"pointer",
+                    border: sel===r.v ? `1.5px solid ${r.c}` : "0.5px solid #ddd",
+                    background: sel===r.v ? r.c+"15" : "#fff",
+                    color: sel===r.v ? r.c : "#888",
+                    fontWeight: sel===r.v ? 500 : 400}}>
                   {r.l}
                 </button>
               ))}
             </div>
-            {sel&&<p style={{fontSize:11,color:"#aaa",marginTop:8}}>Avaliação registada: {RATINGS.find(r=>r.v===sel)?.l}</p>}
+            {sel && (
+              <p style={{fontSize:11,color:"#aaa",marginTop:8}}>
+                Classificação: <strong style={{color:RATINGS.find(r=>r.v===sel)?.c}}>{RATINGS.find(r=>r.v===sel)?.l}</strong>
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -464,6 +539,18 @@ function AppShell() {
   }
 
 
+  async function saveCommercialNote(companyId, note) {
+    const { error } = await supabase
+      .from("disc_companies")
+      .update({ commercial_note: note, updated_at: new Date().toISOString() })
+      .eq("id", companyId);
+    if (!error) {
+      setCompanies(prev => prev.map(c =>
+        c.id === companyId ? { ...c, _commercial_note: note } : c
+      ));
+    }
+  }
+
   async function enrichAll() {
     const pending=companies.filter(c=>c.status==="new");
     if(!pending.length){showToast("Sem empresas novas","warning");return;}
@@ -543,16 +630,41 @@ function AppShell() {
                 <tbody>{filtered.map((c,i)=>{
                   const sel=validations[c.id]||c.latest_validation;
                   return(
-                    <tr key={c.id} style={{background:i%2===0?"transparent":"#fafaf9",cursor:"pointer"}} onClick={()=>setSelectedCompany(c)}>
-                      <td style={{...CS.td,fontWeight:500,color:"#185FA5"}}>{c.name}</td>
+                    <tr key={c.id}
+                      style={{background:i%2===0?"transparent":"#fafaf9",cursor:"pointer"}}
+                      onClick={()=>setSelectedCompany({...c,_commercial_note:c.commercial_note||""})}>
+                      <td style={{...CS.td,fontWeight:500}}>
+                        <span style={{color:"#185FA5"}}>{c.name}</span>
+                        {c.commercial_note&&<span style={{display:"block",fontSize:10,color:"#aaa",fontWeight:400,marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:180}}>{c.commercial_note}</span>}
+                      </td>
                       <td style={{...CS.td,color:"#888"}}>{c.city||"—"}</td>
                       <td style={{...CS.td,color:"#888"}}>{c.category||"—"}</td>
-                      <td style={{...CS.td,fontWeight:500}}>{c.final_score??"—"}</td>
+                      <td style={{...CS.td}}>
+                        {c.final_score!=null
+                          ? <span style={{fontWeight:600,color:CLASS_CFG[c.score_class]?.c||"#1a1a1a"}}>{c.final_score}</span>
+                          : <span style={{fontSize:11,color:"#ddd"}}>—</span>}
+                      </td>
                       <td style={CS.td}><ClassBadge cls={c.score_class}/></td>
-                      <td style={CS.td}>{c.partnership_potential?<span style={{fontSize:12,color:c.partnership_potential==="alto"?"#3B6D11":c.partnership_potential==="baixo"?"#A32D2D":"#854F0B"}}>{c.partnership_potential}</span>:"—"}</td>
-                      <td style={CS.td}>{sel?<span style={{fontSize:11,color:RATINGS.find(r=>r.v===sel)?.c||"#888"}}>{RATINGS.find(r=>r.v===sel)?.l||sel}</span>:<span style={{fontSize:11,color:"#ddd"}}>—</span>}</td>
+                      <td style={CS.td}>
+                        {c.partnership_potential
+                          ? <span style={{fontSize:12,color:c.partnership_potential==="alto"?"#3B6D11":c.partnership_potential==="baixo"?"#A32D2D":"#854F0B"}}>{c.partnership_potential}</span>
+                          : "—"}
+                      </td>
+                      <td style={CS.td}>
+                        {sel
+                          ? <span style={{fontSize:11,color:RATINGS.find(r=>r.v===sel)?.c||"#888",fontWeight:500}}>{RATINGS.find(r=>r.v===sel)?.l||sel}</span>
+                          : <span style={{fontSize:11,color:"#ddd"}}>—</span>}
+                      </td>
                       <td style={CS.td} onClick={e=>e.stopPropagation()}>
-                        {c.status==="new"?<button onClick={()=>enrichCompany(c)} disabled={enrichingId===c.id} style={{padding:"3px 10px",borderRadius:5,fontSize:11,border:"0.5px solid #ddd",background:"#fff",cursor:"pointer"}}>{enrichingId===c.id?"...":"Enriquecer"}</button>:<span style={{fontSize:11,color:"#aaa"}}>✓</span>}
+                        {c.status==="new"||c.status==="enriching"
+                          ? <button onClick={()=>enrichCompany(c)} disabled={enrichingId===c.id}
+                              style={{padding:"3px 10px",borderRadius:5,fontSize:11,border:"0.5px solid #ddd",background:"#fff",cursor:enrichingId===c.id?"wait":"pointer"}}>
+                              {enrichingId===c.id?"⏳":"Enriquecer"}
+                            </button>
+                          : <button onClick={()=>enrichCompany(c)} disabled={enrichingId===c.id}
+                              style={{padding:"3px 10px",borderRadius:5,fontSize:11,border:"0.5px solid #ddd",background:"#fff",cursor:enrichingId===c.id?"wait":"pointer",color:"#aaa"}}>
+                              {enrichingId===c.id?"⏳":"↺"}
+                            </button>}
                       </td>
                     </tr>
                   );
@@ -636,6 +748,7 @@ function AppShell() {
           onEnrich={(c)=>{enrichCompany(c);}}
           enrichingId={enrichingId}
           validations={validations}
+          onSaveNote={saveCommercialNote}
         />
       )}
       {toast&&<Toast msg={toast} onClose={()=>setToast(null)}/>}
