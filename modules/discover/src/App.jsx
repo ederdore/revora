@@ -739,31 +739,82 @@ function AppShell() {
         {page==="review"&&(
           <div>
             <h1 style={CS.h1}>Opportunity Review</h1>
-            <p style={CS.sub}>Top {top20.length} oportunidades · clique para abrir detalhes completos</p>
-            {top20.length===0?<div style={{...CS.card,padding:40,textAlign:"center",color:"#888",fontSize:13}}>Nenhuma empresa pontuada. Vá ao Dashboard e enriqueça as empresas.</div>
-            :top20.map((c,i)=>{
-              const sel=validations[c.id]||c.latest_validation;
-              return(
-                <div key={c.id} style={{...CS.card,padding:"16px 20px",marginBottom:10,cursor:"pointer"}} onClick={()=>setSelectedCompany(c)}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      <div style={{width:24,height:24,borderRadius:"50%",background:"#f5f5f4",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:500,color:"#888",flexShrink:0}}>{i+1}</div>
-                      <div>
-                        <p style={{fontWeight:500,fontSize:14,margin:0,color:"#185FA5"}}>{c.name}</p>
-                        <p style={{fontSize:11,color:"#888",margin:0}}>{[c.city,c.category].filter(Boolean).join(" · ")}</p>
+            <p style={CS.sub}>Top {top20.length} oportunidades ordenadas por score — clique para análise completa</p>
+            {top20.length===0 ? (
+              <div style={{...CS.card,padding:40,textAlign:"center",color:"#888",fontSize:13}}>
+                Nenhuma empresa pontuada ainda. Vá ao Dashboard e clique em "Enriquecer".
+              </div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {top20.map((c,i)=>{
+                  const sel=validations[c.id]||c.latest_validation;
+                  const cfg=CLASS_CFG[c.score_class]||{bg:"#f5f5f4",c:"#888"};
+                  return(
+                    <div key={c.id}
+                      onClick={()=>setSelectedCompanyId(c.id)}
+                      style={{...CS.card,padding:"16px 20px",cursor:"pointer",transition:"box-shadow 0.15s"}}
+                      onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)"}
+                      onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+                      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+                        <div style={{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:0}}>
+                          {/* Rank */}
+                          <div style={{width:28,height:28,borderRadius:"50%",background:"#f5f5f4",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:600,color:"#888",flexShrink:0}}>
+                            {i+1}
+                          </div>
+                          <div style={{minWidth:0}}>
+                            <p style={{fontWeight:500,fontSize:14,margin:"0 0 2px",color:"#1a1a1a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</p>
+                            <p style={{fontSize:11,color:"#aaa",margin:0}}>{[c.city,c.category].filter(Boolean).join(" · ")||"—"}</p>
+                          </div>
+                        </div>
+                        {/* Score + class */}
+                        <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+                          {sel&&(
+                            <span style={{fontSize:11,color:RATINGS.find(r=>r.v===sel)?.c||"#888",fontWeight:500,background:(RATINGS.find(r=>r.v===sel)?.c||"#888")+"15",padding:"2px 8px",borderRadius:4}}>
+                              {RATINGS.find(r=>r.v===sel)?.l}
+                            </span>
+                          )}
+                          <div style={{textAlign:"center",background:cfg.bg,borderRadius:8,padding:"4px 12px"}}>
+                            <div style={{fontSize:18,fontWeight:700,color:cfg.c,lineHeight:1}}>{c.final_score}</div>
+                            <div style={{fontSize:9,color:cfg.c,opacity:0.8}}>Classe {c.score_class}</div>
+                          </div>
+                          <span style={{fontSize:14,color:"#ccc"}}>→</span>
+                        </div>
                       </div>
+                      {/* Mini bars */}
+                      {c.fit_score!=null && (
+                        <div style={{display:"flex",gap:8,marginTop:12,paddingTop:10,borderTop:"0.5px solid #f5f5f4"}}>
+                          {[
+                            {l:"Fit",v:c.fit_score,color:"#534AB7"},
+                            {l:"Authority",v:c.authority_score,color:"#185FA5"},
+                            {l:"Digital",v:c.digital_score,color:"#1D9E75"},
+                            {l:"Contacto",v:c.contact_score,color:"#E8A020"},
+                          ].map(b=>(
+                            <div key={b.l} style={{flex:1}}>
+                              <div style={{fontSize:9,color:"#ccc",marginBottom:2,textAlign:"center"}}>{b.l}</div>
+                              <div style={{height:3,borderRadius:3,background:"#f0f0f0",overflow:"hidden"}}>
+                                <div style={{height:"100%",borderRadius:3,width:(b.v||0)+"%",background:b.color}}/>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* AI summary preview */}
+                      {c.executive_summary && (
+                        <p style={{fontSize:12,color:"#888",marginTop:8,marginBottom:0,lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>
+                          {c.executive_summary}
+                        </p>
+                      )}
+                      {/* Recommended action */}
+                      {c.recommended_action && (
+                        <p style={{fontSize:11,color:"#185FA5",marginTop:6,marginBottom:0}}>
+                          → {c.recommended_action}
+                        </p>
+                      )}
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                      {sel&&<span style={{fontSize:11,color:RATINGS.find(r=>r.v===sel)?.c||"#888"}}>{RATINGS.find(r=>r.v===sel)?.l}</span>}
-                      <span style={{fontSize:18,fontWeight:500}}>{c.final_score}</span>
-                      <ClassBadge cls={c.score_class}/>
-                      <span style={{fontSize:12,color:"#aaa"}}>→</span>
-                    </div>
-                  </div>
-                  {c.executive_summary&&<p style={{fontSize:12,color:"#888",marginTop:8,marginBottom:0,lineHeight:1.5}}>{c.executive_summary}</p>}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
