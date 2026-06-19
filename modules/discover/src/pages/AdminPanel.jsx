@@ -414,7 +414,7 @@ export default function AdminPanel() {
                       <option value="1">Fixo</option><option value="0">Variável</option>
                     </select>
                   </div>
-                  <div style={{display:"flex",gap:8"}}>
+                  <div style={{display:"flex",gap:8}}>
                     <button style={S.btnPrimary} onClick={()=>{
                       if(!newCost.label)return;
                       saveCosts([...costs,{...newCost,id:Date.now(),amount:Number(newCost.amount)||0}]);
