@@ -433,9 +433,210 @@ function ImportPage({CS,handleCSV,addManual,loading}) {
   );
 }
 
+
+// ── ROOT ADMIN SHELL ──────────────────────────────────────────
+// Painel exclusivo do dono da plataforma Revora
+// Acesso: só o email definido em VITE_ADMIN_EMAIL
+function RootAdminShell() {
+  const {user, signOut, enterTenant} = useAuth();
+  const [tenants, setTenants] = useState([]);
+  const [events,  setEvents]  = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab]         = useState("tenants");
+
+  useEffect(() => { loadAll(); }, []);
+
+  async function loadAll() {
+    setLoading(true);
+    const [{ data:ts }, { data:evs }] = await Promise.all([
+      supabase.from("tenants").select("*, tenant_users(count), disc_companies(count)").order("created_at", { ascending:false }),
+      supabase.from("events").select("*, profiles(full_name)").order("created_at", { ascending:false }).limit(60),
+    ]);
+    setTenants(ts||[]);
+    setEvents(evs||[]);
+    setLoading(false);
+  }
+
+  const PLAN_CFG = {
+    trial:      {c:"#854F0B",bg:"#FAEEDA"},
+    starter:    {c:"#185FA5",bg:"#E6F1FB"},
+    pro:        {c:"#3B6D11",bg:"#EAF3DE"},
+    enterprise: {c:"#534AB7",bg:"#EEEDFE"},
+  };
+
+  const S = {
+    card: {background:"#fff",border:"0.5px solid #e5e5e5",borderRadius:12,padding:"20px 24px",marginBottom:16},
+    th:   {padding:"10px 14px",textAlign:"left",fontSize:10,fontWeight:500,color:"#888",textTransform:"uppercase",letterSpacing:0.4,borderBottom:"0.5px solid #e5e5e5"},
+    td:   {padding:"10px 14px",fontSize:13,borderBottom:"0.5px solid #e5e5e5",color:"#1a1a1a"},
+    btn:  {padding:"5px 12px",borderRadius:6,border:"0.5px solid #ddd",background:"#fff",cursor:"pointer",fontSize:12,color:"#1a1a1a"},
+    metric: {background:"#f5f5f4",borderRadius:8,padding:"14px 16px"},
+  };
+
+  const activeClients = tenants.filter(t=>t.plan!=="trial"&&t.active);
+  const mrr = activeClients.reduce((s,t)=>s+({starter:29,pro:59,enterprise:199}[t.plan]||0),0);
+
+  return (
+    <div style={{minHeight:"100vh",background:"#f5f5f4",fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
+      {/* NAV */}
+      <nav style={{background:"#1a1a1a",padding:"0 24px",display:"flex",alignItems:"center",gap:0,position:"sticky",top:0,zIndex:100}}>
+        <span style={{fontWeight:600,fontSize:14,color:"#fff",marginRight:24,padding:"14px 0"}}>Revora Admin</span>
+        {[{k:"tenants",l:"Clientes"},{k:"events",l:"Eventos"},{k:"margin",l:"Margem"}].map(t=>(
+          <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"14px 14px",background:"none",border:"none",cursor:"pointer",fontSize:13,color:tab===t.k?"#fff":"rgba(255,255,255,0.5)",borderBottom:tab===t.k?"2px solid #fff":"2px solid transparent",fontWeight:tab===t.k?500:400}}>{t.l}</button>
+        ))}
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>{user?.email}</span>
+          <button onClick={signOut} style={{padding:"5px 12px",borderRadius:6,border:"0.5px solid rgba(255,255,255,0.3)",background:"none",color:"rgba(255,255,255,0.7)",cursor:"pointer",fontSize:12}}>Sair</button>
+        </div>
+      </nav>
+
+      <main style={{maxWidth:1100,margin:"0 auto",padding:"28px 24px"}}>
+
+        {/* OVERVIEW METRICS */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
+          {[
+            {l:"Clientes activos", v:activeClients.length,   color:"#3B6D11"},
+            {l:"MRR estimado",     v:"€"+mrr,                color:"#185FA5"},
+            {l:"Total tenants",    v:tenants.length,          color:"#534AB7"},
+            {l:"Trials",          v:tenants.filter(t=>t.plan==="trial").length, color:"#854F0B"},
+          ].map(m=>(
+            <div key={m.l} style={S.metric}>
+              <div style={{fontSize:11,color:"#888",marginBottom:4}}>{m.l}</div>
+              <div style={{fontSize:24,fontWeight:600,color:m.color}}>{loading?"—":m.v}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* CLIENTES */}
+        {tab==="tenants"&&(
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <h2 style={{fontSize:16,fontWeight:500,margin:0}}>Clientes ({tenants.length})</h2>
+              <button onClick={loadAll} style={S.btn}>↺ Actualizar</button>
+            </div>
+            <div style={{...S.card,padding:0,overflow:"hidden"}}>
+              {loading?(
+                <div style={{padding:40,textAlign:"center",color:"#888",fontSize:13}}>A carregar...</div>
+              ):(
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                  <thead><tr>{["Cliente","Mercado","Plano","Membros","Empresas","Criado","Acções"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {tenants.map((t,i)=>{
+                      const pc = PLAN_CFG[t.plan]||PLAN_CFG.trial;
+                      return(
+                        <tr key={t.id} style={{background:i%2===0?"transparent":"#fafaf9"}}>
+                          <td style={{...S.td,fontWeight:500}}>
+                            {t.name}
+                            <span style={{display:"block",fontSize:10,color:"#aaa",fontWeight:400}}>{t.slug}</span>
+                          </td>
+                          <td style={S.td}>{{pt:"🇵🇹",es:"🇪🇸",br:"🇧🇷"}[t.market]||t.market}</td>
+                          <td style={S.td}>
+                            <span style={{background:pc.bg,color:pc.c,padding:"2px 8px",borderRadius:5,fontSize:11,fontWeight:500}}>{t.plan}</span>
+                          </td>
+                          <td style={S.td}>{t.tenant_users?.[0]?.count||0}</td>
+                          <td style={S.td}>{t.disc_companies?.[0]?.count||0}</td>
+                          <td style={{...S.td,color:"#aaa"}}>{new Date(t.created_at).toLocaleDateString("pt-PT")}</td>
+                          <td style={S.td}>
+                            <button
+                              onClick={()=>enterTenant(t)}
+                              style={{...S.btn,color:"#534AB7",borderColor:"#534AB7",fontWeight:500}}>
+                              Entrar na conta →
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* EVENTOS */}
+        {tab==="events"&&(
+          <div>
+            <h2 style={{fontSize:16,fontWeight:500,marginBottom:16}}>Log de eventos</h2>
+            <div style={{...S.card,padding:0,overflow:"hidden"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead><tr>{["Evento","Módulo","Utilizador","Tenant","Data"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {events.map((ev,i)=>{
+                    const isRootAccess = ev.event_type.startsWith("root.");
+                    return(
+                      <tr key={ev.id} style={{background:isRootAccess?"#EEEDFE":i%2===0?"transparent":"#fafaf9"}}>
+                        <td style={S.td}>
+                          <code style={{fontSize:11,background:"#f5f5f4",padding:"2px 6px",borderRadius:4,color:isRootAccess?"#534AB7":"#1a1a1a"}}>{ev.event_type}</code>
+                        </td>
+                        <td style={{...S.td,color:"#aaa"}}>{ev.module||"—"}</td>
+                        <td style={{...S.td,color:"#888"}}>{ev.profiles?.full_name||ev.user_id?.slice(0,8)||"—"}</td>
+                        <td style={{...S.td,color:"#888"}}>{tenants.find(t=>t.id===ev.tenant_id)?.name||"—"}</td>
+                        <td style={{...S.td,color:"#aaa",fontSize:11}}>{new Date(ev.created_at).toLocaleString("pt-PT")}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* MARGEM SIMPLES */}
+        {tab==="margin"&&(
+          <div>
+            <h2 style={{fontSize:16,fontWeight:500,marginBottom:16}}>Visão financeira</h2>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+              <div style={S.card}>
+                <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Receita por plano</p>
+                {Object.entries({starter:29,pro:59,enterprise:199}).map(([plan,price])=>{
+                  const count = tenants.filter(t=>t.plan===plan&&t.active).length;
+                  const pc = PLAN_CFG[plan];
+                  return(
+                    <div key={plan} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"0.5px solid #f0f0f0"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{background:pc.bg,color:pc.c,padding:"2px 8px",borderRadius:5,fontSize:11,fontWeight:500}}>{plan}</span>
+                        <span style={{fontSize:12,color:"#888"}}>{count} cliente(s)</span>
+                      </div>
+                      <span style={{fontSize:14,fontWeight:500}}>€{count*price}/mês</span>
+                    </div>
+                  );
+                })}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,paddingTop:12,borderTop:"0.5px solid #e5e5e5"}}>
+                  <span style={{fontSize:13,color:"#888"}}>MRR total</span>
+                  <span style={{fontSize:18,fontWeight:700,color:"#3B6D11"}}>€{mrr}/mês</span>
+                </div>
+              </div>
+              <div style={S.card}>
+                <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Custos estimados</p>
+                {[
+                  {l:"Netlify",        v:"€0",   sub:"free tier"},
+                  {l:"Supabase",       v:"€0",   sub:"free tier"},
+                  {l:"Anthropic API",  v:"~€"+Math.round(tenants.filter(t=>t.active).reduce((s,t)=>(t.disc_companies?.[0]?.count||0)*0.007+s,0)), sub:"variável por uso"},
+                  {l:"Domínio",        v:"€1",   sub:"€12/ano"},
+                ].map(c=>(
+                  <div key={c.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"0.5px solid #f0f0f0"}}>
+                    <div>
+                      <span style={{fontSize:13}}>{c.l}</span>
+                      <span style={{fontSize:11,color:"#aaa",marginLeft:8}}>{c.sub}</span>
+                    </div>
+                    <span style={{fontSize:13,fontWeight:500}}>{c.v}/mês</span>
+                  </div>
+                ))}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,paddingTop:12,borderTop:"0.5px solid #e5e5e5"}}>
+                  <span style={{fontSize:13,color:"#888"}}>Margem estimada</span>
+                  <span style={{fontSize:18,fontWeight:700,color:mrr>0?"#3B6D11":"#888"}}>~{mrr>0?Math.round((mrr/mrr)*100):0}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
 // ── APP SHELL ─────────────────────────────────────────────────
 function AppShell() {
-  const {user,profile,tenant,role,isAdmin,signOut,logEvent,loading}=useAuth();
+  const {user,profile,tenant,role,isAdmin,signOut,logEvent,loading,impersonating,exitTenant,enterTenant}=useAuth();
   const [page,setPage]=useState("import");
   const [companies,setCompanies]=useState([]);
   const [dataLoading,setDataLoading]=useState(false);
@@ -469,6 +670,8 @@ function AppShell() {
 
   if(loading)return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#888",fontSize:13}}>A carregar...</div>;
   if(!user)return <AuthPage/>;
+  // Root admin without impersonation → goes to admin panel
+  if(isAdmin&&!impersonating&&!tenant)return <RootAdminShell/>;
 
   const navItems=[
     {k:"import",l:"Importar"},{k:"dashboard",l:"Dashboard"},
@@ -484,6 +687,12 @@ function AppShell() {
         <span style={{fontWeight:600,fontSize:14,marginRight:24,padding:"14px 0",color:"#1a1a1a"}}>Revora Discover</span>
         {tenant&&<span style={{fontSize:12,color:"#aaa",padding:"3px 8px",background:"#f5f5f4",borderRadius:5}}>{tenant.name}</span>}
       </nav>
+      {impersonating&&(
+        <div style={{background:"#534AB7",color:"#fff",padding:"8px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:12}}>
+          <span>⚡ Revora Admin · A aceder ao workspace <strong>{impersonating.tenant.name}</strong> · Todas as acções são registadas</span>
+          <button onClick={exitTenant} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"#fff",padding:"4px 12px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500}}>← Sair da conta</button>
+        </div>
+      )}
       <main style={{maxWidth:900,margin:"0 auto",padding:"28px 20px"}}>
         <CompanyPage
           companyId={selectedCompanyId}
@@ -625,7 +834,9 @@ function AppShell() {
           {tenant&&<span style={{fontSize:12,color:"#aaa",padding:"3px 8px",background:"#f5f5f4",borderRadius:5}}>{tenant.name}</span>}
           <UsageMeterNav tenantId={tenant?.id}/>
           <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#888",textDecoration:"none",padding:"5px 10px",border:"0.5px solid #ddd",borderRadius:6}}>⭐ Feedback</a>
-          <button onClick={signOut} style={{...CS.btn,fontSize:12,color:"#888"}}>Sair</button>
+          {impersonating
+            ? <button onClick={exitTenant} style={{...CS.btn,fontSize:12,color:"#534AB7",borderColor:"#534AB7"}}>← Sair da conta</button>
+            : <button onClick={signOut} style={{...CS.btn,fontSize:12,color:"#888"}}>Sair</button>}
         </div>
       </nav>
 
