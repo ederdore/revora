@@ -40,22 +40,67 @@ export default function AuthPage() {
     setError(""); setLoading(true);
     if (!tenantName.trim()) { setError("Informe o nome da empresa."); setLoading(false); return; }
 
-    const err = await signUp(email, password, name);
-    if (err) { setError(err.message); setLoading(false); return; }
+    // Regista utilizador
+    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+      email, password,
+      options: { data: { full_name: name } },
+    });
+    if (signUpErr) { setError(signUpErr.message); setLoading(false); return; }
 
-    // Cria tenant após registo
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const slug = tenantName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
-      const { data: t } = await supabase.from("tenants").insert({
-        name: tenantName, slug: slug + "-" + Date.now().toString(36), market: "pt", plan: "trial",
-      }).select().single();
-      if (t) {
-        await supabase.from("tenant_users").insert({ tenant_id: t.id, user_id: user.id, role: "admin" });
-        await supabase.from("events").insert({ tenant_id: t.id, user_id: user.id, event_type: "tenant.created", entity_type: "tenant", entity_id: t.id });
-      }
-    }
-    setSuccess("Conta criada! Verifique o seu email para confirmar.");
+    const user = signUpData?.user;
+    if (!user) { setError("Erro ao criar conta. Tente novamente."); setLoading(false); return; }
+
+    // Cria tenant e associa utilizador
+    const slug = tenantName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") + "-" + Date.now().toString(36);
+    const { data: t, error: tErr } = await supabase.from("tenants").insert({
+      name: tenantName.trim(),
+      slug,
+      market: "pt",
+      plan: "trial",
+      module_discover: true,
+      score_weight_fit: 0.35,
+      score_weight_authority: 0.25,
+      score_weight_digital: 0.20,
+      score_weight_contact: 0.20,
+      weight_ia: 0.70,
+      weight_human: 0.30,
+      scoring_phase: 1,
+      phase2_threshold: 10,
+      phase3_threshold: 50,
+    }).select().single();
+
+    if (tErr || !t) { setError("Conta criada mas erro ao configurar workspace: " + (tErr?.message||"")); setLoading(false); return; }
+
+    // Liga utilizador ao tenant como admin
+    await supabase.from("tenant_users").insert({ tenant_id: t.id, user_id: user.id, role: "admin" });
+
+    // Cria perfil
+    await supabase.from("profiles").upsert({ id: user.id, full_name: name }, { onConflict: "id" });
+
+    // Log
+    await supabase.from("events").insert({ tenant_id: t.id, user_id: user.id, event_type: "tenant.created", entity_type: "tenant", entity_id: t.id, module: "platform" });
+
+    // Insere sinais ICP predefinidos para o novo tenant
+    const defaultSignals = [
+      {label:"Conhecemos a empresa presencialmente", signal_type:"positive", weight:1.5, position:1},
+      {label:"Contacto estabelecido com decisor",    signal_type:"positive", weight:2.0, position:2},
+      {label:"Interesse declarado em parceria",      signal_type:"positive", weight:2.5, position:3},
+      {label:"Já vende produtos similares",          signal_type:"positive", weight:1.5, position:4},
+      {label:"Volume potencial: grande (>500€/mês)", signal_type:"positive", weight:2.0, position:5},
+      {label:"Volume potencial: médio (200-500€/mês)",signal_type:"positive",weight:1.0, position:6},
+      {label:"Volume potencial: pequeno (<200€/mês)",signal_type:"positive", weight:0.5, position:7},
+      {label:"Localização estratégica",              signal_type:"positive", weight:1.0, position:8},
+      {label:"Decisor acessível e receptivo",        signal_type:"positive", weight:1.5, position:9},
+      {label:"Concorrência directa instalada",       signal_type:"negative", weight:1.5, position:10},
+      {label:"Sem capacidade financeira aparente",   signal_type:"negative", weight:1.0, position:11},
+      {label:"Gestão desinteressada",                signal_type:"negative", weight:2.0, position:12},
+      {label:"Localização pouco estratégica",        signal_type:"negative", weight:0.5, position:13},
+    ];
+    await supabase.from("icp_signals").insert(defaultSignals.map(s => ({ ...s, tenant_id: t.id })));
+
+    setSuccess("Conta criada com sucesso! A entrar...");
+    // Auto-login após registo (confirmação de email desactivada)
+    await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
   }
 

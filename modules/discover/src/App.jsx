@@ -448,8 +448,21 @@ function AppShell() {
 
   const loadCompanies=useCallback(async()=>{
     if(!tenant)return;setDataLoading(true);
-    const{data}=await supabase.from("companies_full").select("*").eq("tenant_id",tenant.id).order("final_score",{ascending:false,nullsFirst:false});
-    setCompanies(data||[]);setDataLoading(false);
+    // Load companies - order by combined_score first, then final_score
+    const{data}=await supabase.from("companies_full").select("*").eq("tenant_id",tenant.id).order("combined_score",{ascending:false,nullsFirst:false}).order("final_score",{ascending:false,nullsFirst:false});
+    setCompanies(data||[]);
+
+    // Load all validations from DB (bug 4 fix)
+    const{data:vals}=await supabase.from("disc_validations")
+      .select("company_id,human_rating")
+      .eq("tenant_id",tenant.id)
+      .order("created_at",{ascending:false});
+    if(vals){
+      const valMap={};
+      vals.forEach(v=>{if(!valMap[v.company_id])valMap[v.company_id]=v.human_rating;});
+      setValidations(valMap);
+    }
+    setDataLoading(false);
   },[tenant]);
 
   useEffect(()=>{if(tenant)loadCompanies();},[tenant,loadCompanies]);
@@ -583,7 +596,7 @@ function AppShell() {
     else{setValidations(v=>({...v,[companyId]:rating}));await logEvent("validation.submitted","company",companyId,{rating,ai_score:aiScore});showToast("Avaliação guardada!","success");}
   }
 
-  const top20=companies.filter(c=>c.final_score!=null).slice(0,20);
+  const top20=[...companies].filter(c=>c.final_score!=null||c.combined_score!=null).sort((a,b)=>(b.combined_score??b.final_score??0)-(a.combined_score??a.final_score??0)).slice(0,20);
   const filtered=filterClass==="all"?companies:companies.filter(c=>c.score_class===filterClass);
 
   const CS={
@@ -660,13 +673,18 @@ function AppShell() {
                       onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)"}
                       onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
 
-                      {/* Score badge top right */}
-                      {c.final_score!=null && (
-                        <div style={{position:"absolute",top:14,right:14,textAlign:"center",background:cfg.bg,borderRadius:8,padding:"4px 10px"}}>
-                          <div style={{fontSize:16,fontWeight:700,color:cfg.c,lineHeight:1}}>{c.final_score}</div>
-                          <div style={{fontSize:9,color:cfg.c,opacity:0.8}}>Classe {c.score_class}</div>
-                        </div>
-                      )}
+                      {/* Score badge top right - shows combined if available */}
+                      {(c.final_score!=null||c.combined_score!=null) && (()=>{
+                        const displayScore = c.combined_score??c.final_score;
+                        const displayClass = c.combined_class??c.score_class;
+                        const dcfg = CLASS_CFG[displayClass]||{bg:"#f5f5f4",c:"#888"};
+                        return(
+                          <div style={{position:"absolute",top:14,right:14,textAlign:"center",background:dcfg.bg,borderRadius:8,padding:"4px 10px"}}>
+                            <div style={{fontSize:16,fontWeight:700,color:dcfg.c,lineHeight:1}}>{displayScore}</div>
+                            <div style={{fontSize:9,color:dcfg.c,opacity:0.8}}>Classe {displayClass}</div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Name + location */}
                       <div style={{paddingRight:c.final_score!=null?60:0,marginBottom:8}}>
@@ -823,14 +841,24 @@ function AppShell() {
             <h1 style={CS.h1}>Dashboard de Validação</h1>
             <p style={CS.sub}>Acurácia por classe · Meta: 70%+ nas Classe A</p>
             <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:28}}>
-              {[{l:"Avaliadas",v:Object.keys(validations).length},{l:"Excelentes",v:Object.values(validations).filter(v=>v==="excellent").length},{l:"Boas",v:Object.values(validations).filter(v=>v==="good").length},{l:"Ruins",v:Object.values(validations).filter(v=>v==="bad").length},{l:"Revisar",v:Object.values(validations).filter(v=>v==="review_later").length}].map(m=>(
+              {[
+                {l:"Avaliadas",v:Object.keys(validations).length},
+                {l:"Excelentes",v:Object.values(validations).filter(v=>v==="excellent").length},
+                {l:"Boas",v:Object.values(validations).filter(v=>v==="good").length},
+                {l:"Ruins",v:Object.values(validations).filter(v=>v==="bad").length},
+                {l:"Revisar",v:Object.values(validations).filter(v=>v==="review_later").length},
+              ].map(m=>(
                 <div key={m.l} style={CS.metric}><div style={{fontSize:11,color:"#888",marginBottom:3}}>{m.l}</div><div style={{fontSize:22,fontWeight:500}}>{m.v}</div></div>
               ))}
             </div>
             <h2 style={{fontSize:14,fontWeight:500,marginBottom:14}}>Acurácia por classe</h2>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:28}}>
               {["A","B","C","D"].map(cls=>{
-                const clsCos=companies.filter(c=>c.score_class===cls);const validated=clsCos.filter(c=>validations[c.id]).length;const approved=clsCos.filter(c=>["excellent","good"].includes(validations[c.id])).length;const pct=validated>0?Math.round(approved/validated*100):null;const ok=pct!==null&&pct>=70;
+                const effectiveClass = c => c.combined_class||c.score_class;
+                const clsCos=companies.filter(c=>effectiveClass(c)===cls);
+                const validated=clsCos.filter(c=>validations[c.id]).length;
+                const approved=clsCos.filter(c=>["excellent","good"].includes(validations[c.id])).length;
+                const pct=validated>0?Math.round(approved/validated*100):null;const ok=pct!==null&&pct>=70;
                 return(
                   <div key={cls} style={{...CS.card,padding:"18px 20px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><ClassBadge cls={cls}/>{pct!==null&&<span style={{fontSize:20,fontWeight:500,color:ok?"#3B6D11":"#A32D2D"}}>{pct}%</span>}</div>
