@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient.js";
 import { useAuth } from "../AuthContext.jsx";
-import { calcHumanScore, calcCombinedScore, scoreToClass, saveHumanScore, checkPhaseProgression } from "../lib/hybridScore.js";
+// hybridScore utils used inline for reliability
 
 const CLASS_CFG = {
   A:{bg:"#EAF3DE",c:"#3B6D11"},
@@ -100,28 +100,58 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
   }
 
   async function submitValidation(rating) {
-    const ratingScore = RATINGS.find(r => r.v === rating)?.score || 50;
-    const newHumanScore = calcHumanScore(rating, markedSignals, icpSignals);
-
-    await supabase.from("disc_validations").insert({
-      tenant_id: tenant.id, company_id: companyId,
-      reviewer_id: user.id, ai_score: company.final_score, human_rating: rating,
+    // Calcula score humano baseado no rating + sinais ICP marcados
+    const ratingBase = { excellent:100, good:75, neutral:50, bad:20, review_later:50 }[rating] || 50;
+    let adjustment = 0;
+    let totalWeight = 0;
+    markedSignals.forEach(ms => {
+      const sig = icpSignals.find(s => s.id === ms.signal_id);
+      if (!sig) return;
+      const w = Number(sig.weight || 1);
+      totalWeight += w;
+      if (sig.signal_type === "positive") adjustment += w * 10;
+      if (sig.signal_type === "negative") adjustment -= w * 10;
     });
+    const normalized = totalWeight > 0 ? adjustment / totalWeight : 0;
+    const newHumanScore = Math.min(100, Math.max(0, Math.round(ratingBase + normalized)));
 
-    // Save and recalculate combined score
-    const result = await saveHumanScore(tenant.id, companyId, newHumanScore, company.final_score, tenant);
+    // Calcula score combinado
+    const wIA    = Number(tenant?.weight_ia    || 0.70);
+    const wHuman = Number(tenant?.weight_human || 0.30);
+    const phase  = tenant?.scoring_phase || 1;
+    const aiScore = company.final_score || 0;
+    const combined = phase === 1
+      ? aiScore
+      : Math.min(100, Math.max(0, Math.round(aiScore * wIA + newHumanScore * wHuman)));
+    const combinedCls = combined >= 80 ? "A" : combined >= 60 ? "B" : combined >= 40 ? "C" : "D";
+
+    // 1. Guarda validação
+    const { error: e1 } = await supabase.from("disc_validations").insert({
+      tenant_id: tenant.id, company_id: companyId,
+      reviewer_id: user.id, ai_score: aiScore, human_rating: rating,
+    });
+    if (e1) { console.error("disc_validations error:", e1); return; }
+
+    // 2. Guarda score humano
+    const { error: e2 } = await supabase.from("company_human_score").upsert({
+      tenant_id: tenant.id, company_id: companyId,
+      reviewer_id: user.id, score: newHumanScore,
+    }, { onConflict: "company_id" });
+    if (e2) console.error("company_human_score error:", e2);
+
+    // 3. Actualiza disc_scoring com score combinado
+    const { error: e3 } = await supabase.from("disc_scoring")
+      .update({ human_score: newHumanScore, combined_score: combined, combined_class: combinedCls, scoring_phase: phase })
+      .eq("company_id", companyId);
+    if (e3) console.error("disc_scoring update error:", e3);
+
+    // Actualiza estado local imediatamente
     setValidation(rating);
-    setHumanScore(result.humanScore);
-    setCombinedScore(result.combined);
-    setCombinedClass(result.combinedClass);
+    setHumanScore(newHumanScore);
+    setCombinedScore(combined);
+    setCombinedClass(combinedCls);
 
-    // Check if phase should advance
-    const phase = await checkPhaseProgression(tenant.id, tenant);
-    if (phase.advanced) {
-      console.log(`Score avançou para fase ${phase.to} com ${phase.validations} validações`);
-    }
-
-    await logEvent("validation.submitted", "company", companyId, { rating, human_score: newHumanScore, combined: result.combined });
+    await logEvent("validation.submitted", "company", companyId, { rating, human_score: newHumanScore, combined });
     loadAll();
   }
 
