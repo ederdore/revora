@@ -459,10 +459,22 @@ function RootAdminShell() {
     setLoading(true);
     const [{data:ts},{data:evs},{data:us}] = await Promise.all([
       supabase.from("tenants").select("*, tenant_users(count), disc_companies(count)").order("created_at",{ascending:false}),
-      supabase.from("events").select("*, profiles(full_name)").order("created_at",{ascending:false}).limit(100),
+      supabase.from("events").select("id,tenant_id,user_id,module,event_type,entity_type,entity_id,payload,created_at").order("created_at",{ascending:false}).limit(100),
       supabase.from("tenant_usage_summary").select("*"),
     ]);
-    setTenants(ts||[]); setEvents(evs||[]); setUsage(us||[]);
+    // Enrich events with profile names separately
+    let enrichedEvents = evs||[];
+    if(evs?.length){
+      const userIds=[...new Set(evs.filter(e=>e.user_id).map(e=>e.user_id))];
+      if(userIds.length){
+        const{data:profs}=await supabase.from("profiles").select("id,full_name").in("id",userIds);
+        if(profs){
+          const profMap=Object.fromEntries(profs.map(p=>[p.id,p.full_name]));
+          enrichedEvents=evs.map(e=>({...e,profiles:{full_name:profMap[e.user_id]||null}}));
+        }
+      }
+    }
+    setTenants(ts||[]); setEvents(enrichedEvents); setUsage(us||[]);
     setLoading(false);
   }
 
