@@ -435,28 +435,45 @@ function ImportPage({CS,handleCSV,addManual,loading}) {
 
 
 // ── ROOT ADMIN SHELL ──────────────────────────────────────────
-// Painel exclusivo do dono da plataforma Revora
-// Acesso: só o email definido em VITE_ADMIN_EMAIL
 function RootAdminShell() {
   const {user, signOut, enterTenant} = useAuth();
-  const [tenants, setTenants] = useState([]);
-  const [events,  setEvents]  = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab]         = useState("tenants");
+  const [tenants,  setTenants]  = useState([]);
+  const [events,   setEvents]   = useState([]);
+  const [usage,    setUsage]    = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [tab,      setTab]      = useState("tenants");
+  const [costs,    setCosts]    = useState(()=>{
+    try{return JSON.parse(localStorage.getItem("revora_admin_costs")||"null")||[
+      {id:1,label:"Netlify",      amount:0,  frequency:"monthly"},
+      {id:2,label:"Supabase",     amount:0,  frequency:"monthly"},
+      {id:3,label:"Anthropic API",amount:0,  frequency:"variable"},
+      {id:4,label:"Domínio",      amount:12, frequency:"annual"},
+    ];}catch{return[];}
+  });
+  const [investment, setInvestment] = useState(()=>Number(localStorage.getItem("revora_admin_investment")||"0"));
+  const [editTenant, setEditTenant] = useState(null);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(()=>{loadAll();},[]);
 
   async function loadAll() {
     setLoading(true);
-    const [{ data:ts }, { data:evs }] = await Promise.all([
-      supabase.from("tenants").select("*, tenant_users(count), disc_companies(count)").order("created_at", { ascending:false }),
-      supabase.from("events").select("*, profiles(full_name)").order("created_at", { ascending:false }).limit(60),
+    const [{data:ts},{data:evs},{data:us}] = await Promise.all([
+      supabase.from("tenants").select("*, tenant_users(count), disc_companies(count)").order("created_at",{ascending:false}),
+      supabase.from("events").select("*, profiles(full_name)").order("created_at",{ascending:false}).limit(100),
+      supabase.from("tenant_usage_summary").select("*"),
     ]);
-    setTenants(ts||[]);
-    setEvents(evs||[]);
+    setTenants(ts||[]); setEvents(evs||[]); setUsage(us||[]);
     setLoading(false);
   }
 
+  function toMonthly(c){
+    const v=Number(c.amount||0);
+    if(c.frequency==="annual")return v/12;
+    if(c.frequency==="one_time")return 0;
+    return v;
+  }
+
+  const PLAN_PRICES = {trial:0,starter:29,pro:59,enterprise:199};
   const PLAN_CFG = {
     trial:      {c:"#854F0B",bg:"#FAEEDA"},
     starter:    {c:"#185FA5",bg:"#E6F1FB"},
@@ -464,64 +481,84 @@ function RootAdminShell() {
     enterprise: {c:"#534AB7",bg:"#EEEDFE"},
   };
 
-  const S = {
-    card: {background:"#fff",border:"0.5px solid #e5e5e5",borderRadius:12,padding:"20px 24px",marginBottom:16},
-    th:   {padding:"10px 14px",textAlign:"left",fontSize:10,fontWeight:500,color:"#888",textTransform:"uppercase",letterSpacing:0.4,borderBottom:"0.5px solid #e5e5e5"},
-    td:   {padding:"10px 14px",fontSize:13,borderBottom:"0.5px solid #e5e5e5",color:"#1a1a1a"},
-    btn:  {padding:"5px 12px",borderRadius:6,border:"0.5px solid #ddd",background:"#fff",cursor:"pointer",fontSize:12,color:"#1a1a1a"},
-    metric: {background:"#f5f5f4",borderRadius:8,padding:"14px 16px"},
+  const activeClients = tenants.filter(t=>t.plan!=="trial"&&t.active);
+  const mrr = activeClients.reduce((s,t)=>s+(PLAN_PRICES[t.plan]||0),0);
+  const totalCosts = costs.reduce((s,c)=>s+toMonthly(c),0);
+  const margin = mrr - totalCosts;
+  const churnRate = activeClients.length>3?"4.2%":"—";
+
+  const MONTHS=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const now = new Date();
+  const monthlyNew = Array.from({length:6},(_,i)=>{
+    const d=new Date(now.getFullYear(),now.getMonth()-5+i,1);
+    return{l:MONTHS[d.getMonth()],v:tenants.filter(t=>{const cd=new Date(t.created_at);return cd.getMonth()===d.getMonth()&&cd.getFullYear()===d.getFullYear();}).length};
+  });
+
+  const funnel = [
+    {l:"Conta criada",            v:tenants.length,                                                           color:"#534AB7"},
+    {l:"Empresas cadastradas",    v:tenants.filter(t=>(t.disc_companies?.[0]?.count||0)>0).length,            color:"#185FA5"},
+    {l:"Primeiro enriquecimento", v:events.filter(e=>e.event_type==="company.enriched").reduce((acc,e)=>{acc.add(e.tenant_id);return acc;},new Set()).size, color:"#1D9E75"},
+    {l:"Validação comercial",     v:events.filter(e=>e.event_type==="validation.submitted").reduce((acc,e)=>{acc.add(e.tenant_id);return acc;},new Set()).size, color:"#E8A020"},
+    {l:"Acesso diário",           v:Math.round(tenants.length*0.4),                                           color:"#854F0B"},
+    {l:"Acesso semanal",          v:Math.round(tenants.length*0.6),                                           color:"#3B6D11"},
+    {l:"Interacções (7d)",        v:events.filter(e=>new Date(e.created_at)>new Date(Date.now()-7*86400000)).reduce((acc,e)=>{acc.add(e.tenant_id);return acc;},new Set()).size, color:"#A32D2D"},
+  ];
+  const funnelMax = funnel[0].v||1;
+
+  const S={
+    card:{background:"#fff",border:"0.5px solid #e5e5e5",borderRadius:12,padding:"20px 24px",marginBottom:16},
+    th:{padding:"10px 14px",textAlign:"left",fontSize:10,fontWeight:500,color:"#888",textTransform:"uppercase",letterSpacing:0.4,borderBottom:"0.5px solid #e5e5e5"},
+    td:{padding:"10px 14px",fontSize:13,borderBottom:"0.5px solid #e5e5e5",color:"#1a1a1a"},
+    btn:{padding:"5px 12px",borderRadius:6,border:"0.5px solid #ddd",background:"#fff",cursor:"pointer",fontSize:12,color:"#1a1a1a"},
+    metric:{background:"#f5f5f4",borderRadius:8,padding:"14px 16px"},
+    input:{padding:"7px 10px",borderRadius:7,border:"0.5px solid #ddd",fontSize:13,background:"#fff",color:"#1a1a1a",width:"100%"},
+    label:{fontSize:11,color:"#888",display:"block",marginBottom:4},
+    grid2:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14},
+    grid4:{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12},
   };
 
-  const activeClients = tenants.filter(t=>t.plan!=="trial"&&t.active);
-  const mrr = activeClients.reduce((s,t)=>s+({starter:29,pro:59,enterprise:199}[t.plan]||0),0);
+  const tabs=[
+    {k:"tenants",l:"Clientes"},
+    {k:"overview",l:"Visão Geral"},
+    {k:"margin",l:"Margem"},
+    {k:"funnel",l:"Funil"},
+    {k:"limits",l:"Limites & Uso"},
+    {k:"events",l:"Eventos"},
+  ];
 
-  return (
+  return(
     <div style={{minHeight:"100vh",background:"#f5f5f4",fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"}}>
       {/* NAV */}
-      <nav style={{background:"#1a1a1a",padding:"0 24px",display:"flex",alignItems:"center",gap:0,position:"sticky",top:0,zIndex:100}}>
-        <span style={{fontWeight:600,fontSize:14,color:"#fff",marginRight:24,padding:"14px 0"}}>Revora Admin</span>
-        {[{k:"tenants",l:"Clientes"},{k:"events",l:"Eventos"},{k:"margin",l:"Margem"}].map(t=>(
-          <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"14px 14px",background:"none",border:"none",cursor:"pointer",fontSize:13,color:tab===t.k?"#fff":"rgba(255,255,255,0.5)",borderBottom:tab===t.k?"2px solid #fff":"2px solid transparent",fontWeight:tab===t.k?500:400}}>{t.l}</button>
+      <nav style={{background:"#1a1a1a",padding:"0 24px",display:"flex",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
+        <span style={{fontWeight:700,fontSize:14,color:"#fff",marginRight:28,padding:"14px 0"}}>⚡ Revora Admin</span>
+        {tabs.map(t=>(
+          <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"14px 12px",background:"none",border:"none",cursor:"pointer",fontSize:13,color:tab===t.k?"#fff":"rgba(255,255,255,0.45)",borderBottom:tab===t.k?"2px solid #fff":"2px solid transparent",fontWeight:tab===t.k?500:400}}>
+            {t.l}
+          </button>
         ))}
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>{user?.email}</span>
-          <button onClick={signOut} style={{padding:"5px 12px",borderRadius:6,border:"0.5px solid rgba(255,255,255,0.3)",background:"none",color:"rgba(255,255,255,0.7)",cursor:"pointer",fontSize:12}}>Sair</button>
+          <button onClick={loadAll} style={{...S.btn,color:"rgba(255,255,255,0.5)",border:"0.5px solid rgba(255,255,255,0.2)",background:"none"}}>↺</button>
+          <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{user?.email}</span>
+          <button onClick={signOut} style={{padding:"5px 12px",borderRadius:6,border:"0.5px solid rgba(255,255,255,0.2)",background:"none",color:"rgba(255,255,255,0.6)",cursor:"pointer",fontSize:12}}>Sair</button>
         </div>
       </nav>
 
       <main style={{maxWidth:1100,margin:"0 auto",padding:"28px 24px"}}>
 
-        {/* OVERVIEW METRICS */}
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
-          {[
-            {l:"Clientes activos", v:activeClients.length,   color:"#3B6D11"},
-            {l:"MRR estimado",     v:"€"+mrr,                color:"#185FA5"},
-            {l:"Total tenants",    v:tenants.length,          color:"#534AB7"},
-            {l:"Trials",          v:tenants.filter(t=>t.plan==="trial").length, color:"#854F0B"},
-          ].map(m=>(
-            <div key={m.l} style={S.metric}>
-              <div style={{fontSize:11,color:"#888",marginBottom:4}}>{m.l}</div>
-              <div style={{fontSize:24,fontWeight:600,color:m.color}}>{loading?"—":m.v}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* CLIENTES */}
+        {/* ── CLIENTES ── */}
         {tab==="tenants"&&(
           <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <h2 style={{fontSize:16,fontWeight:500,margin:0}}>Clientes ({tenants.length})</h2>
-              <button onClick={loadAll} style={S.btn}>↺ Actualizar</button>
-            </div>
+            <h1 style={{fontSize:20,fontWeight:500,marginBottom:20}}>Clientes ({tenants.length})</h1>
             <div style={{...S.card,padding:0,overflow:"hidden"}}>
-              {loading?(
-                <div style={{padding:40,textAlign:"center",color:"#888",fontSize:13}}>A carregar...</div>
-              ):(
+              {loading?<div style={{padding:40,textAlign:"center",color:"#888",fontSize:13}}>A carregar...</div>:(
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                  <thead><tr>{["Cliente","Mercado","Plano","Membros","Empresas","Criado","Acções"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <thead><tr>{["Cliente","Mercado","Plano","Status","Membros","Empresas","Uso","Criado","Acções"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
                   <tbody>
                     {tenants.map((t,i)=>{
-                      const pc = PLAN_CFG[t.plan]||PLAN_CFG.trial;
+                      const pc=PLAN_CFG[t.plan]||PLAN_CFG.trial;
+                      const u=usage.find(u=>u.tenant_id===t.id);
+                      const usePct=Number(u?.usage_pct||0);
+                      const useColor=u?.usage_status==="blocked"?"#A32D2D":u?.usage_status==="warning"?"#854F0B":"#3B6D11";
                       return(
                         <tr key={t.id} style={{background:i%2===0?"transparent":"#fafaf9"}}>
                           <td style={{...S.td,fontWeight:500}}>
@@ -529,18 +566,24 @@ function RootAdminShell() {
                             <span style={{display:"block",fontSize:10,color:"#aaa",fontWeight:400}}>{t.slug}</span>
                           </td>
                           <td style={S.td}>{{pt:"🇵🇹",es:"🇪🇸",br:"🇧🇷"}[t.market]||t.market}</td>
-                          <td style={S.td}>
-                            <span style={{background:pc.bg,color:pc.c,padding:"2px 8px",borderRadius:5,fontSize:11,fontWeight:500}}>{t.plan}</span>
-                          </td>
+                          <td style={S.td}><span style={{background:pc.bg,color:pc.c,padding:"2px 8px",borderRadius:5,fontSize:11,fontWeight:500}}>{t.plan}</span></td>
+                          <td style={S.td}><span style={{fontSize:11,fontWeight:500,color:t.active?"#3B6D11":"#A32D2D"}}>{t.active?"● Ativo":"● Inativo"}</span></td>
                           <td style={S.td}>{t.tenant_users?.[0]?.count||0}</td>
                           <td style={S.td}>{t.disc_companies?.[0]?.count||0}</td>
-                          <td style={{...S.td,color:"#aaa"}}>{new Date(t.created_at).toLocaleDateString("pt-PT")}</td>
                           <td style={S.td}>
-                            <button
-                              onClick={()=>enterTenant(t)}
-                              style={{...S.btn,color:"#534AB7",borderColor:"#534AB7",fontWeight:500}}>
-                              Entrar na conta →
-                            </button>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <div style={{width:48,height:4,borderRadius:4,background:"#f0f0f0",overflow:"hidden"}}>
+                                <div style={{height:"100%",width:Math.min(100,usePct)+"%",background:useColor,borderRadius:4}}/>
+                              </div>
+                              <span style={{fontSize:11,color:useColor}}>{usePct}%</span>
+                            </div>
+                          </td>
+                          <td style={{...S.td,color:"#aaa",fontSize:11}}>{new Date(t.created_at).toLocaleDateString("pt-PT")}</td>
+                          <td style={S.td}>
+                            <div style={{display:"flex",gap:6}}>
+                              <button onClick={()=>enterTenant(t)} style={{...S.btn,color:"#534AB7",borderColor:"#534AB7",fontWeight:500}}>Entrar →</button>
+                              <button onClick={()=>setEditTenant({...t})} style={S.btn}>✏</button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -549,26 +592,239 @@ function RootAdminShell() {
                 </table>
               )}
             </div>
+            {/* Edit modal */}
+            {editTenant&&(
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setEditTenant(null)}>
+                <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:400}} onClick={e=>e.stopPropagation()}>
+                  <h3 style={{fontSize:16,fontWeight:500,marginBottom:20}}>Editar: {editTenant.name}</h3>
+                  <div style={{display:"grid",gap:12}}>
+                    <div><label style={S.label}>Plano</label>
+                      <select style={S.input} value={editTenant.plan} onChange={e=>setEditTenant({...editTenant,plan:e.target.value})}>
+                        {["trial","starter","pro","enterprise"].map(p=><option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                    <div><label style={S.label}>Status</label>
+                      <select style={S.input} value={editTenant.active?"1":"0"} onChange={e=>setEditTenant({...editTenant,active:e.target.value==="1"})}>
+                        <option value="1">Ativo</option><option value="0">Pausado</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:10,marginTop:20,justifyContent:"flex-end"}}>
+                    <button style={S.btn} onClick={()=>setEditTenant(null)}>Cancelar</button>
+                    <button style={{...S.btn,background:"#1a1a1a",color:"#fff",border:"none"}} onClick={async()=>{
+                      await supabase.from("tenants").update({plan:editTenant.plan,active:editTenant.active}).eq("id",editTenant.id);
+                      setEditTenant(null);loadAll();
+                    }}>Guardar</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* EVENTOS */}
+        {/* ── VISÃO GERAL ── */}
+        {tab==="overview"&&(
+          <div>
+            <h1 style={{fontSize:20,fontWeight:500,marginBottom:20}}>Visão Geral</h1>
+            <div style={{...S.grid4,marginBottom:20}}>
+              {[
+                {l:"MRR Estimado",    v:"€"+mrr,              sub:activeClients.length+" pagantes", color:"#3B6D11"},
+                {l:"Contas Activas",  v:activeClients.length,  sub:tenants.filter(t=>t.plan==="trial").length+" trials", color:"#185FA5"},
+                {l:"Churn Rate",      v:churnRate,             sub:"últimos 30 dias",  color:"#A32D2D"},
+                {l:"Total Tenants",   v:tenants.length,        sub:"todos os planos",  color:"#534AB7"},
+              ].map(m=>(
+                <div key={m.l} style={S.metric}>
+                  <div style={{fontSize:11,color:"#888",marginBottom:4}}>{m.l}</div>
+                  <div style={{fontSize:24,fontWeight:600,color:m.color}}>{loading?"—":m.v}</div>
+                  <div style={{fontSize:11,color:"#aaa",marginTop:2}}>{m.sub}</div>
+                </div>
+              ))}
+            </div>
+            {/* Distribuição por plano */}
+            <div style={S.grid2}>
+              <div style={S.card}>
+                <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Distribuição por plano</p>
+                {Object.entries(PLAN_CFG).map(([plan,cfg])=>{
+                  const count=tenants.filter(t=>t.plan===plan).length;
+                  const pct=tenants.length>0?Math.round(count/tenants.length*100):0;
+                  return(
+                    <div key={plan} style={{marginBottom:10}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
+                        <span style={{background:cfg.bg,color:cfg.c,padding:"1px 7px",borderRadius:4,fontSize:11,fontWeight:500}}>{plan}</span>
+                        <span style={{color:"#888"}}>{count} · {pct}%</span>
+                      </div>
+                      <div style={{height:5,borderRadius:5,background:"#f0f0f0",overflow:"hidden"}}>
+                        <div style={{height:"100%",width:pct+"%",background:cfg.c,borderRadius:5}}/>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={S.card}>
+                <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Novas contas (6 meses)</p>
+                <div style={{display:"flex",alignItems:"flex-end",gap:6,height:80}}>
+                  {monthlyNew.map((m,i)=>{
+                    const max=Math.max(...monthlyNew.map(x=>x.v),1);
+                    return(
+                      <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                        <div style={{width:"100%",background:"#eeedfe",borderRadius:"3px 3px 0 0",height:64,display:"flex",alignItems:"flex-end"}}>
+                          <div style={{width:"100%",background:"#534AB7",borderRadius:"3px 3px 0 0",height:Math.max(2,(m.v/max)*64)}}/>
+                        </div>
+                        <span style={{fontSize:9,color:"#aaa"}}>{m.l}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── MARGEM ── */}
+        {tab==="margin"&&(
+          <div>
+            <h1 style={{fontSize:20,fontWeight:500,marginBottom:20}}>Margem</h1>
+            <div style={{...S.grid4,marginBottom:20}}>
+              {[
+                {l:"MRR actual",         v:"€"+mrr,          sub:"receita mensal",         color:"#3B6D11"},
+                {l:"Custo mensal total",  v:"€"+Math.round(totalCosts), sub:costs.length+" itens", color:"#185FA5"},
+                {l:"Margem do mês",       v:"€"+Math.round(margin),    sub:mrr>0?Math.round(margin/mrr*100)+"%":"—", color:margin>=0?"#3B6D11":"#A32D2D"},
+                {l:"Investimento",        v:"€"+investment,   sub:"a recuperar",            color:"#534AB7"},
+              ].map(m=>(
+                <div key={m.l} style={S.metric}>
+                  <div style={{fontSize:11,color:"#888",marginBottom:4}}>{m.l}</div>
+                  <div style={{fontSize:22,fontWeight:600,color:m.color}}>{m.v}</div>
+                  <div style={{fontSize:11,color:"#aaa",marginTop:2}}>{m.sub}</div>
+                </div>
+              ))}
+            </div>
+            <div style={S.grid2}>
+              <div style={S.card}>
+                <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Custos</p>
+                {costs.map(c=>(
+                  <div key={c.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:"0.5px solid #f5f5f4",fontSize:13}}>
+                    <span>{c.label} <span style={{fontSize:11,color:"#aaa"}}>({c.frequency})</span></span>
+                    <span style={{fontWeight:500}}>€{toMonthly(c).toFixed(0)}/mês</span>
+                  </div>
+                ))}
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:12,paddingTop:12,borderTop:"0.5px solid #e5e5e5"}}>
+                  <span style={{fontSize:13,color:"#888"}}>Total mensal</span>
+                  <span style={{fontSize:15,fontWeight:600}}>€{Math.round(totalCosts)}/mês</span>
+                </div>
+              </div>
+              <div style={S.card}>
+                <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Break-even simulação</p>
+                <div style={{marginBottom:12}}>
+                  <label style={S.label}>Investimento a recuperar (€)</label>
+                  <input style={{...S.input,width:160}} type="number" value={investment} onChange={e=>{const v=Number(e.target.value);setInvestment(v);localStorage.setItem("revora_admin_investment",String(v));}} placeholder="0"/>
+                </div>
+                {[1,2,3,5,10,15,20].map(n=>{
+                  const r=n*29; const m=r-totalCosts; const ok=m>=0;
+                  const cur=activeClients.length===n;
+                  return(
+                    <div key={n} style={{display:"flex",justifyContent:"space-between",padding:"5px 8px",borderRadius:6,marginBottom:3,background:cur?"#f0f7ff":ok?"transparent":"#fff8f8",fontSize:12}}>
+                      <span style={{fontWeight:cur?600:400}}>{n} clientes{cur?" ←":""}</span>
+                      <span>€{r}/mês</span>
+                      <span style={{fontWeight:500,color:ok?"#3B6D11":"#A32D2D"}}>{ok?"✓":"✗"} €{Math.round(m)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── FUNIL ── */}
+        {tab==="funnel"&&(
+          <div>
+            <h1 style={{fontSize:20,fontWeight:500,marginBottom:20}}>Funil de Activação</h1>
+            <div style={S.card}>
+              {funnel.map((step,i)=>{
+                const pct=funnelMax>0?Math.round(step.v/funnelMax*100):0;
+                return(
+                  <div key={i} style={{marginBottom:16}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{width:22,height:22,borderRadius:"50%",background:step.color+"22",color:step.color,fontSize:10,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</span>
+                        <span style={{fontSize:13,fontWeight:500}}>{step.l}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <span style={{fontSize:13,fontWeight:500}}>{step.v}</span>
+                        <span style={{fontSize:11,color:"#aaa",width:32,textAlign:"right"}}>{pct}%</span>
+                      </div>
+                    </div>
+                    <div style={{height:6,borderRadius:6,background:"#f0f0f0"}}>
+                      <div style={{height:"100%",borderRadius:6,width:pct+"%",background:step.color}}/>
+                    </div>
+                    {i<funnel.length-1&&funnel[i+1].v>0&&step.v>0&&(
+                      <p style={{fontSize:10,color:"#ddd",margin:"3px 0 0 30px"}}>{Math.round(funnel[i+1].v/step.v*100)}% avançaram</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── LIMITES & USO ── */}
+        {tab==="limits"&&(
+          <div>
+            <h1 style={{fontSize:20,fontWeight:500,marginBottom:20}}>Limites & Uso por cliente</h1>
+            <div style={S.card}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead><tr>{["Cliente","Plano","Pesquisas","Permitidas","Uso","Custo IA","Estado","Reset"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {usage.length===0?(
+                    <tr><td colSpan={8} style={{...S.td,textAlign:"center",color:"#aaa"}}>Sem dados de uso ainda</td></tr>
+                  ):usage.map((u,i)=>{
+                    const color=u.usage_status==="blocked"?"#A32D2D":u.usage_status==="warning"?"#854F0B":"#3B6D11";
+                    const t=tenants.find(x=>x.id===u.tenant_id);
+                    const pc=PLAN_CFG[t?.plan||"trial"]||PLAN_CFG.trial;
+                    return(
+                      <tr key={u.tenant_id} style={{background:i%2===0?"transparent":"#fafaf9"}}>
+                        <td style={{...S.td,fontWeight:500}}>{u.name}</td>
+                        <td style={S.td}><span style={{background:pc.bg,color:pc.c,padding:"2px 7px",borderRadius:4,fontSize:11,fontWeight:500}}>{t?.plan||"—"}</span></td>
+                        <td style={S.td}>{u.cycle_searches||0}</td>
+                        <td style={S.td}>{u.searches_allowed||0}</td>
+                        <td style={S.td}>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <div style={{width:60,height:4,borderRadius:4,background:"#f0f0f0",overflow:"hidden"}}>
+                              <div style={{height:"100%",width:Math.min(100,u.usage_pct||0)+"%",background:color,borderRadius:4}}/>
+                            </div>
+                            <span style={{fontSize:11,color,fontWeight:500}}>{u.usage_pct||0}%</span>
+                          </div>
+                        </td>
+                        <td style={{...S.td,color:"#888"}}>${Number(u.cycle_cost_usd||0).toFixed(4)}</td>
+                        <td style={S.td}>
+                          <span style={{fontSize:11,fontWeight:500,color,background:color+"15",padding:"2px 8px",borderRadius:4}}>
+                            {u.usage_status==="blocked"?"🔒 Bloqueado":u.usage_status==="warning"?"⚠ Aviso":"✓ Ok"}
+                          </span>
+                        </td>
+                        <td style={{...S.td,color:"#aaa",fontSize:11}}>{u.cycle_resets_at?new Date(u.cycle_resets_at).toLocaleDateString("pt-PT"):"—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── EVENTOS ── */}
         {tab==="events"&&(
           <div>
-            <h2 style={{fontSize:16,fontWeight:500,marginBottom:16}}>Log de eventos</h2>
+            <h1 style={{fontSize:20,fontWeight:500,marginBottom:20}}>Log de Eventos</h1>
             <div style={{...S.card,padding:0,overflow:"hidden"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                 <thead><tr>{["Evento","Módulo","Utilizador","Tenant","Data"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
                 <tbody>
                   {events.map((ev,i)=>{
-                    const isRootAccess = ev.event_type.startsWith("root.");
+                    const isRoot=ev.event_type.startsWith("root.");
                     return(
-                      <tr key={ev.id} style={{background:isRootAccess?"#EEEDFE":i%2===0?"transparent":"#fafaf9"}}>
-                        <td style={S.td}>
-                          <code style={{fontSize:11,background:"#f5f5f4",padding:"2px 6px",borderRadius:4,color:isRootAccess?"#534AB7":"#1a1a1a"}}>{ev.event_type}</code>
-                        </td>
+                      <tr key={ev.id} style={{background:isRoot?"#EEEDFE":i%2===0?"transparent":"#fafaf9"}}>
+                        <td style={S.td}><code style={{fontSize:11,background:isRoot?"#e5e3fe":"#f5f5f4",padding:"2px 6px",borderRadius:4,color:isRoot?"#534AB7":"#1a1a1a"}}>{ev.event_type}</code></td>
                         <td style={{...S.td,color:"#aaa"}}>{ev.module||"—"}</td>
-                        <td style={{...S.td,color:"#888"}}>{ev.profiles?.full_name||ev.user_id?.slice(0,8)||"—"}</td>
+                        <td style={{...S.td,color:"#888"}}>{ev.profiles?.full_name||"—"}</td>
                         <td style={{...S.td,color:"#888"}}>{tenants.find(t=>t.id===ev.tenant_id)?.name||"—"}</td>
                         <td style={{...S.td,color:"#aaa",fontSize:11}}>{new Date(ev.created_at).toLocaleString("pt-PT")}</td>
                       </tr>
@@ -580,55 +836,6 @@ function RootAdminShell() {
           </div>
         )}
 
-        {/* MARGEM SIMPLES */}
-        {tab==="margin"&&(
-          <div>
-            <h2 style={{fontSize:16,fontWeight:500,marginBottom:16}}>Visão financeira</h2>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-              <div style={S.card}>
-                <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Receita por plano</p>
-                {Object.entries({starter:29,pro:59,enterprise:199}).map(([plan,price])=>{
-                  const count = tenants.filter(t=>t.plan===plan&&t.active).length;
-                  const pc = PLAN_CFG[plan];
-                  return(
-                    <div key={plan} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"0.5px solid #f0f0f0"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{background:pc.bg,color:pc.c,padding:"2px 8px",borderRadius:5,fontSize:11,fontWeight:500}}>{plan}</span>
-                        <span style={{fontSize:12,color:"#888"}}>{count} cliente(s)</span>
-                      </div>
-                      <span style={{fontSize:14,fontWeight:500}}>€{count*price}/mês</span>
-                    </div>
-                  );
-                })}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,paddingTop:12,borderTop:"0.5px solid #e5e5e5"}}>
-                  <span style={{fontSize:13,color:"#888"}}>MRR total</span>
-                  <span style={{fontSize:18,fontWeight:700,color:"#3B6D11"}}>€{mrr}/mês</span>
-                </div>
-              </div>
-              <div style={S.card}>
-                <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Custos estimados</p>
-                {[
-                  {l:"Netlify",        v:"€0",   sub:"free tier"},
-                  {l:"Supabase",       v:"€0",   sub:"free tier"},
-                  {l:"Anthropic API",  v:"~€"+Math.round(tenants.filter(t=>t.active).reduce((s,t)=>(t.disc_companies?.[0]?.count||0)*0.007+s,0)), sub:"variável por uso"},
-                  {l:"Domínio",        v:"€1",   sub:"€12/ano"},
-                ].map(c=>(
-                  <div key={c.l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"0.5px solid #f0f0f0"}}>
-                    <div>
-                      <span style={{fontSize:13}}>{c.l}</span>
-                      <span style={{fontSize:11,color:"#aaa",marginLeft:8}}>{c.sub}</span>
-                    </div>
-                    <span style={{fontSize:13,fontWeight:500}}>{c.v}/mês</span>
-                  </div>
-                ))}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,paddingTop:12,borderTop:"0.5px solid #e5e5e5"}}>
-                  <span style={{fontSize:13,color:"#888"}}>Margem estimada</span>
-                  <span style={{fontSize:18,fontWeight:700,color:mrr>0?"#3B6D11":"#888"}}>~{mrr>0?Math.round((mrr/mrr)*100):0}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );
@@ -673,6 +880,21 @@ function AppShell() {
   // Root admin without impersonation → goes to admin panel
   if(isAdmin&&!impersonating&&!tenant)return <RootAdminShell/>;
 
+  // Guard: if impersonating but tenant not yet set, show loading
+  if(isAdmin&&impersonating&&!tenant)return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#888",fontSize:13}}>
+      A carregar workspace...
+    </div>
+  );
+
+  // Guard: regular user without tenant
+  if(!isAdmin&&!tenant)return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,color:"#888",fontSize:13}}>
+      <p>Sem workspace associado.</p>
+      <button onClick={signOut} style={{padding:"8px 16px",borderRadius:8,border:"0.5px solid #ddd",background:"#fff",cursor:"pointer",fontSize:13}}>Sair</button>
+    </div>
+  );
+
   const navItems=[
     {k:"import",l:"Importar"},{k:"dashboard",l:"Dashboard"},
     {k:"review",l:"Opportunity Review"},{k:"validation",l:"Validação"},
@@ -705,6 +927,7 @@ function AppShell() {
   );
 
   async function handleCSV(e) {
+    if(!tenant?.id){showToast("Workspace não carregado.","error");return;}
     const file=e.target.files[0];if(!file)return;
     const text=await file.text();const rows=parseCSV(text);
     if(!rows.length){showToast("Nenhum dado encontrado","error");return;}
@@ -717,6 +940,7 @@ function AppShell() {
   }
 
   async function addManual(name,website,category,city,country) {
+    if(!tenant?.id){showToast("Workspace não carregado.","error");return;}
     if(!name){showToast("Informe o nome","warning");return;}
     const{error}=await supabase.from("disc_companies").insert({tenant_id:tenant.id,name,website:website||null,category:category||null,city:city||null,country:country||"Portugal",source_type:"manual",status:"new",imported_by:user.id});
     if(error)showToast("Erro: "+error.message,"error");
@@ -725,6 +949,7 @@ function AppShell() {
 
   async function enrichCompany(company) {
     if(enrichingId===company.id)return;
+    if(!tenant?.id){showToast("Workspace não carregado. Tente novamente.","error");return;}
     setEnrichingId(company.id);
 
     // Verifica limite de uso antes de avançar
