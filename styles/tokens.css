@@ -1,0 +1,29 @@
+/* ─────────────────────────────────────────────
+   Revora Design Tokens
+   ───────────────────────────────────────────── */
+
+:root {
+  /* ── Brand Core ── */
+  --revora-core:        #103B4A;   /* Deep Teal — cor principal */
+  --revora-dark:        #0B2530;   /* Fundos, dashboards, sidebars */
+  --revora-light:       #F5F8FA;   /* Fundo claro, cards, leitura */
+  --revora-intelligence:#16B8A6;   /* IA, inovação, tecnologia */
+
+  /* ── Módulos ── */
+  --discover:           #2D7FF9;   /* Azul — descoberta, exploração */
+  --engage:             #7B61FF;   /* Roxo — conexão, relacionamento */
+  --pulse:              #00A86B;   /* Verde — saúde, retenção */
+  --feedback:           #FF8A3D;   /* Laranja — opinião, interação */
+
+  /* ── Tipografia ── */
+  --font-display: 'Manrope', sans-serif;
+  --font-body:    'Manrope', sans-serif;
+
+  /* ── Neutros ── */
+  --white:   #FFFFFF;
+  --text:    #F0F4F8;
+  --muted:   #7A8FA6;
+  --muted2:  #3D5468;
+  --border:  #1A3548;
+  --border2: #22404F;
+}
