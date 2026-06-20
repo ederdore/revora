@@ -985,7 +985,17 @@ function AppShell() {
 
       // Scoring com keywords do tenant
       const scores = computeScores(enrichment, tenant);
-      await supabase.from("disc_scoring").upsert({tenant_id:tenant.id,company_id:company.id,...scores},{onConflict:"company_id"});
+      await supabase.from("disc_scoring").upsert({
+        tenant_id:      tenant.id,
+        company_id:     company.id,
+        fit_score:      scores.fitScore,
+        digital_score:  scores.digitalScore,
+        contact_score:  scores.contactScore,
+        authority_score:scores.authorityScore,
+        final_score:    scores.finalScore,
+        score_class:    scores.scoreClass,
+        model_version:  1,
+      },{onConflict:"company_id"});
 
       // Sinais detectados
       await supabase.from("disc_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
