@@ -4,7 +4,7 @@ import { supabase } from "./supabaseClient.js";
 import AuthPage from "./pages/AuthPage.jsx";
 import AdminPanel from "./pages/AdminPanel.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
-import { enrichCompanyMock, analyzeCompanyMock, computeScores, rgpdFilter } from "./lib/enrichment.js";
+import { enrichCompanyReal, analyzeCompanyMock, computeScores, rgpdFilter, getMicrolinkStatus } from "./lib/enrichment.js";
 import { canSearch, logUsage, PLAN_LIMITS } from "./lib/usage.js";
 import { UsageMeterNav, UsageMeterFull } from "./components/UsageMeter.jsx";
 import CompanyPage from "./pages/CompanyPage.jsx";
@@ -299,6 +299,28 @@ function CompanyModal({company, onClose, onValidate, onEnrich, enrichingId, vali
   );
 }
 
+// ── MICROLINK COUNTER ─────────────────────────────────────────
+function MicrolinkCounter() {
+  const [status, setStatus] = useState(null);
+  useEffect(()=>{
+    try {
+      const { getMicrolinkStatus } = require("./lib/enrichment.js");
+      setStatus(getMicrolinkStatus());
+    } catch {
+      // dynamic import fallback
+      import("./lib/enrichment.js").then(m=>setStatus(m.getMicrolinkStatus()));
+    }
+  },[]);
+  if(!status)return null;
+  const color = status.remaining<=10?"#A32D2D":status.remaining<=30?"#854F0B":"#3B6D11";
+  return(
+    <div title={`Microlink: ${status.used}/${status.limit} requests hoje`}
+      style={{display:"flex",alignItems:"center",gap:5,padding:"3px 8px",background:"#f5f5f4",borderRadius:6,fontSize:11,color}}>
+      🔗 {status.remaining} restantes
+    </div>
+  );
+}
+
 // ── PROFILE PAGE ──────────────────────────────────────────────
 function ProfilePage({CS}) {
   const {user,profile,tenant,role} = useAuth();
@@ -378,6 +400,27 @@ function ProfilePage({CS}) {
           </div>
         </div>
       )}
+
+      {/* ANÁLISES IA */}
+      <div style={{...CS.card,padding:24,marginBottom:16}}>
+        <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Análises de IA (Claude)</p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:12}}>
+          {[
+            {l:"Este mês",  v:usageDetails?.aiCalls??companies.filter(c=>c.executive_summary).length, sub:"análises geradas"},
+            {l:"Custo IA",  v:usageDetails?"$"+usageDetails.aiCost.toFixed(4):"—",                    sub:"Claude Sonnet 4.6"},
+            {l:"Empresas",  v:companies.filter(c=>c.executive_summary).length,                         sub:"com análise IA"},
+          ].map(f=>(
+            <div key={f.l} style={{background:"#f9f9f8",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <p style={{fontSize:10,color:"#aaa",margin:"0 0 3px",textTransform:"uppercase",letterSpacing:0.5}}>{f.l}</p>
+              <p style={{fontSize:16,fontWeight:600,margin:"0 0 2px"}}>{f.v}</p>
+              <p style={{fontSize:10,color:"#aaa",margin:0}}>{f.sub}</p>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:11,color:"#aaa",padding:"7px 12px",background:"#f9f9f8",borderRadius:6}}>
+          Modelo: Claude Sonnet 4.6 · ~$0.003/input · ~$0.015/output · ~$0.007 por análise completa
+        </div>
+      </div>
 
       {/* PLANO */}
       <div style={{...CS.card,padding:24,marginBottom:16}}>
@@ -607,6 +650,65 @@ function RootAdminShell() {
         {tab==="tenants"&&(
           <div>
             <h1 style={{fontSize:20,fontWeight:500,marginBottom:20}}>Clientes ({tenants.length})</h1>
+            {/* COST CARDS */}
+            {!loading&&usage.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12,marginBottom:20}}>
+                {usage.map(u=>{
+                  const t=tenants.find(x=>x.id===u.tenant_id);
+                  const pc=PLAN_CFG[t?.plan||"trial"]||PLAN_CFG.trial;
+                  const aiCost=Number(u.cycle_cost_usd||0);
+                  const googleCost=(u.cycle_searches||0)*0.032;
+                  const totalCost=aiCost+googleCost;
+                  const color=u.usage_status==="blocked"?"#A32D2D":u.usage_status==="warning"?"#854F0B":"#3B6D11";
+                  return(
+                    <div key={u.tenant_id} style={{background:"#fff",border:"0.5px solid #e5e5e5",borderRadius:12,padding:"16px 18px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                        <div>
+                          <p style={{fontSize:13,fontWeight:500,margin:"0 0 2px"}}>{u.name}</p>
+                          <span style={{background:pc.bg,color:pc.c,padding:"1px 7px",borderRadius:4,fontSize:10,fontWeight:500}}>{t?.plan}</span>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:500,color,background:color+"15",padding:"2px 8px",borderRadius:4}}>
+                          {u.usage_pct||0}%
+                        </span>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                        {[
+                          {l:"Pesquisas",v:u.cycle_searches||0,      sub:"este mês"},
+                          {l:"Análises IA",v:u.cycle_ai_calls||0,   sub:"Claude"},
+                          {l:"Custo IA",   v:"$"+aiCost.toFixed(4),  sub:"Anthropic"},
+                          {l:"Custo total",v:"$"+totalCost.toFixed(3),sub:"mês actual"},
+                        ].map(f=>(
+                          <div key={f.l} style={{background:"#f9f9f8",borderRadius:6,padding:"6px 8px"}}>
+                            <div style={{fontSize:9,color:"#aaa",textTransform:"uppercase",letterSpacing:0.4}}>{f.l}</div>
+                            <div style={{fontSize:13,fontWeight:500}}>{f.v}</div>
+                            <div style={{fontSize:9,color:"#ccc"}}>{f.sub}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{marginTop:10,height:3,borderRadius:3,background:"#f0f0f0",overflow:"hidden"}}>
+                        <div style={{height:"100%",width:Math.min(100,u.usage_pct||0)+"%",background:color,borderRadius:3}}/>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* TOTAL CARD */}
+                <div style={{background:"#1a1a1a",borderRadius:12,padding:"16px 18px",color:"#fff"}}>
+                  <p style={{fontSize:12,color:"rgba(255,255,255,0.5)",margin:"0 0 10px",textTransform:"uppercase",letterSpacing:0.5}}>Total plataforma</p>
+                  {[
+                    {l:"Total pesquisas", v:usage.reduce((s,u)=>s+(u.cycle_searches||0),0)},
+                    {l:"Total análises IA",v:usage.reduce((s,u)=>s+(u.cycle_ai_calls||0),0)},
+                    {l:"Custo IA total",  v:"$"+usage.reduce((s,u)=>s+Number(u.cycle_cost_usd||0),0).toFixed(4)},
+                    {l:"Custo Google",    v:"$"+(usage.reduce((s,u)=>s+(u.cycle_searches||0),0)*0.032).toFixed(3)},
+                  ].map(f=>(
+                    <div key={f.l} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:"0.5px solid rgba(255,255,255,0.1)"}}>
+                      <span style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{f.l}</span>
+                      <span style={{fontSize:12,fontWeight:500}}>{f.v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div style={{...S.card,padding:0,overflow:"hidden"}}>
               {loading?<div style={{padding:40,textAlign:"center",color:"#888",fontSize:13}}>A carregar...</div>:(
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -907,8 +1009,10 @@ function AppShell() {
   const [dataLoading,setDataLoading]=useState(false);
   const [enrichingId,setEnrichingId]=useState(null);
   const [filterClass,setFilterClass]=useState("all");
+  const [filterSearch,setFilterSearch]=useState("");
   const [validations,setValidations]=useState({});
   const [selectedCompanyId,setSelectedCompanyId]=useState(null);
+  const [selectedIds,setSelectedIds]=useState(new Set());
   const [toast,setToast]=useState(null);
   const showToast=(text,type="info")=>setToast({text,type});
 
@@ -1022,8 +1126,9 @@ function AppShell() {
     await supabase.from("disc_companies").update({status:"enriching"}).eq("id",company.id);
 
     try {
-      // Fase 1: Mock realista por categoria (substitui por Microlink quando disponível)
-      const { enrichment: rawEnrichment, signals } = await enrichCompanyMock(company);
+      // Tenta Microlink (crawl real) — fallback para mock se limite atingido ou sem URL
+      const { enrichment: rawEnrichment, signals, _source } = await enrichCompanyReal(company);
+      console.log(`[Revora] Enriquecimento via ${_source} para ${company.name}`);
 
       // RGPD: filtra emails pessoais, marca fonte pública, define retenção
       const enrichment = rgpdFilter({ ...rawEnrichment, tenant_id:tenant.id, company_id:company.id });
@@ -1086,6 +1191,71 @@ function AppShell() {
     }
   }
 
+  async function deleteCompanies(ids) {
+    if(!ids.size)return;
+    if(!confirm(`Apagar ${ids.size} empresa(s)? Esta acção não pode ser desfeita.`))return;
+    const idArr=[...ids];
+    // Remove dados relacionados primeiro
+    await Promise.all([
+      supabase.from("disc_enrichment").delete().in("company_id",idArr),
+      supabase.from("disc_scoring").delete().in("company_id",idArr),
+      supabase.from("disc_ai_analysis").delete().in("company_id",idArr),
+      supabase.from("disc_signals").delete().in("company_id",idArr),
+      supabase.from("disc_validations").delete().in("company_id",idArr),
+      supabase.from("company_icp_signals").delete().in("company_id",idArr),
+      supabase.from("company_human_score").delete().in("company_id",idArr),
+    ]);
+    await supabase.from("disc_companies").delete().in("id",idArr);
+    setSelectedIds(new Set());
+    showToast(`${ids.size} empresa(s) apagada(s)`,"success");
+    await loadCompanies();
+  }
+
+  async function resetAllAnalysis() {
+    if(!confirm("Apagar TODA a análise (scores, enriquecimento, IA, validações)? As empresas ficam mas voltam a 'new'."))return;
+    const ids=companies.map(c=>c.id);
+    await Promise.all([
+      supabase.from("disc_enrichment").delete().eq("tenant_id",tenant.id),
+      supabase.from("disc_scoring").delete().eq("tenant_id",tenant.id),
+      supabase.from("disc_ai_analysis").delete().eq("tenant_id",tenant.id),
+      supabase.from("disc_signals").delete().eq("tenant_id",tenant.id),
+      supabase.from("disc_validations").delete().eq("tenant_id",tenant.id),
+      supabase.from("company_icp_signals").delete().eq("tenant_id",tenant.id),
+      supabase.from("company_human_score").delete().eq("tenant_id",tenant.id),
+    ]);
+    await supabase.from("disc_companies").update({status:"new",commercial_note:null}).eq("tenant_id",tenant.id);
+    showToast("Análise reposta — empresas prontas para reenriquecer","success");
+    await loadCompanies();
+  }
+
+  function exportCSV() {
+    const rows=companies.map(c=>({
+      name:c.name||"",
+      website:c.website||"",
+      category:c.category||"",
+      city:c.city||"",
+      country:c.country||"",
+      status:c.status||"",
+      score:c.final_score??c.combined_score??"",
+      class:c.score_class||c.combined_class||"",
+      email:c.email||"",
+      phone:c.phone||"",
+      instagram:c.instagram||"",
+      potential:c.partnership_potential||"",
+      validation:c.latest_validation||"",
+      commercial_note:c.commercial_note||"",
+    }));
+    const headers=Object.keys(rows[0]);
+    const csv=[headers.join(","),...rows.map(r=>headers.map(h=>`"${String(r[h]).replace(/"/g,'""')}"`).join(","))].join("
+");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=`revora-discover-${tenant?.slug||"export"}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    showToast(`${companies.length} empresas exportadas`,"success");
+  }
+
   async function enrichAll() {
     const pending=companies.filter(c=>c.status==="new");
     if(!pending.length){showToast("Sem empresas novas","warning");return;}
@@ -1126,6 +1296,7 @@ function AppShell() {
         ))}
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
           {tenant&&<span style={{fontSize:12,color:"#aaa",padding:"3px 8px",background:"#f5f5f4",borderRadius:5}}>{tenant.name}</span>}
+          <MicrolinkCounter/>
           <UsageMeterNav tenantId={tenant?.id}/>
           <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"#888",textDecoration:"none",padding:"5px 10px",border:"0.5px solid #ddd",borderRadius:6}}>⭐ Feedback</a>
           {impersonating
@@ -1142,12 +1313,25 @@ function AppShell() {
 
         {page==="dashboard"&&(
           <div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div><h1 style={CS.h1}>Dashboard</h1><p style={{fontSize:13,color:"#888",margin:0}}>Clique numa empresa para ver detalhes e validar</p></div>
-              <div style={{display:"flex",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:12}}>
+              <div><h1 style={CS.h1}>Dashboard</h1><p style={{fontSize:13,color:"#888",margin:0}}>{companies.length} empresas · clique para ver detalhes</p></div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {selectedIds.size>0&&(
+                  <button onClick={()=>deleteCompanies(selectedIds)} style={{...CS.btn,color:"#A32D2D",borderColor:"#f0c0c0"}}>
+                    🗑 Apagar seleccionadas ({selectedIds.size})
+                  </button>
+                )}
                 <button style={CS.btn} onClick={enrichAll}>⚡ Enriquecer novas ({companies.filter(c=>c.status==="new").length})</button>
-                <button style={{...CS.btn,color:"#aaa"}} onClick={loadCompanies}>↺</button>
+                <button style={CS.btn} onClick={exportCSV} title="Exportar CSV">↓ CSV</button>
+                <button style={{...CS.btn,color:"#A32D2D"}} onClick={resetAllAnalysis} title="Zerar toda a análise">🔄 Zerar análise</button>
+                <button style={{...CS.btn,color:"#aaa"}} onClick={loadCompanies} title="Actualizar">↺</button>
               </div>
+            </div>
+            {/* SEARCH */}
+            <div style={{marginBottom:12}}>
+              <input value={filterSearch} onChange={e=>setFilterSearch(e.target.value)}
+                placeholder="🔍 Pesquisar por nome, cidade ou categoria..."
+                style={{...CS.input,width:"100%",borderRadius:20,padding:"8px 16px"}}/>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:20}}>
               {[{l:"Total",v:companies.length},{l:"Classe A",v:companies.filter(c=>c.score_class==="A").length},{l:"Classe B",v:companies.filter(c=>c.score_class==="B").length},{l:"Pontuadas",v:companies.filter(c=>c.final_score!=null).length},{l:"Novas",v:companies.filter(c=>c.status==="new").length}].map(m=>(
@@ -1174,9 +1358,14 @@ function AppShell() {
                   return(
                     <div key={c.id}
                       onClick={()=>setSelectedCompanyId(c.id)}
-                      style={{background:"#fff",border:"0.5px solid #e5e5e5",borderRadius:12,padding:"16px 18px",cursor:"pointer",transition:"box-shadow 0.15s",position:"relative"}}
+                      style={{background:selectedIds.has(c.id)?"#f0f7ff":"#fff",border:selectedIds.has(c.id)?"0.5px solid #185FA5":"0.5px solid #e5e5e5",borderRadius:12,padding:"16px 18px",cursor:"pointer",transition:"box-shadow 0.15s",position:"relative"}}
                       onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)"}
                       onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+                      {/* Checkbox select */}
+                      <div onClick={e=>{e.stopPropagation();setSelectedIds(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;})}}
+                        style={{position:"absolute",top:10,left:10,width:16,height:16,borderRadius:4,border:"1.5px solid",borderColor:selectedIds.has(c.id)?"#185FA5":"#ddd",background:selectedIds.has(c.id)?"#185FA5":"#fff",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1}}>
+                        {selectedIds.has(c.id)&&<span style={{color:"#fff",fontSize:9,fontWeight:700}}>✓</span>}
+                      </div>
 
                       {/* Score badge top right - shows combined if available */}
                       {(c.final_score!=null||c.combined_score!=null) && (()=>{
