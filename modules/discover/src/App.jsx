@@ -33,24 +33,39 @@ const FEEDBACK_URL = import.meta.env.VITE_FEEDBACK_URL || "https://starloop.verc
 async function callClaudeAI(company, enrichment, tenant) {
   const ctx = tenant?.ai_prompt_context || "Avalia o potencial comercial desta empresa como parceiro de distribuição/revenda.";
   const biz = tenant?.business_context || "Empresa de suplementos nutricionais premium.";
+  const isMock = enrichment._source === "mock";
   const prompt = `És um analista comercial especializado em parcerias B2B em Portugal.
 
-Contexto: ${biz}
-Instrução: ${ctx}
+CONTEXTO DO CLIENTE: ${biz}
+INSTRUÇÃO: ${ctx}
 
-Empresa:
+DADOS DA EMPRESA:
 Nome: ${company.name}
-Website: ${company.website || "—"}
+Website: ${company.website || "não disponível"}
 Categoria: ${company.category || "—"}
 Cidade: ${company.city || "—"}
-Título: ${enrichment.website_title || "—"}
+País: ${company.country || "Portugal"}
+Título do site: ${enrichment.website_title || "—"}
 Descrição: ${enrichment.meta_description || "—"}
-Conteúdo: ${(enrichment.visible_content || "").substring(0, 600)}
-Instagram: ${enrichment.instagram || "não"}
-Email: ${enrichment.email || "não"}
+Conteúdo visível: ${(enrichment.visible_content || "").substring(0, 800)}
+Instagram: ${enrichment.instagram || "não detectado"}
+LinkedIn: ${enrichment.linkedin || "não detectado"}
+Email: ${enrichment.email || "não detectado"}
+Telefone: ${enrichment.phone || "não detectado"}
+WhatsApp: ${enrichment.whatsapp || "não detectado"}
+Loja online: ${enrichment.has_online_store ? "sim" : "não detectado"}
+Fonte dos dados: ${isMock ? "estimativa por categoria (sem crawl real)" : "site real analisado"}
 
-Responde APENAS com JSON sem markdown:
-{"executive_summary":"2-3 frases","strengths":["s1","s2"],"weaknesses":["w1"],"partnership_potential":"alto|médio|baixo","recommended_action":"ação concreta","confidence_score":70}`;
+INSTRUÇÕES DE ANÁLISE:
+1. executive_summary: 2-3 frases específicas sobre ESTA empresa e o seu fit com o cliente. Menciona o nome da empresa.
+2. strengths: 3-4 pontos fortes ESPECÍFICOS desta empresa (não genéricos). Baseia-te nos dados reais do site.
+3. weaknesses: 2-3 pontos fracos ou riscos REAIS identificados nos dados.
+4. partnership_potential: "alto" se fit claro e contacto disponível, "médio" se potencial mas incerteza, "baixo" se pouco alinhamento.
+5. recommended_action: acção comercial CONCRETA e específica para esta empresa (canal, mensagem, timing).
+6. confidence_score: 0-100. Usa 0-30 se dados são estimativas, 40-70 se dados parciais, 70-95 se site real analisado.
+
+Responde APENAS com JSON válido sem markdown:
+{"executive_summary":"...","strengths":["...","...","..."],"weaknesses":["...","..."],"partnership_potential":"alto|médio|baixo","recommended_action":"...","confidence_score":75}`;
 
   try {
     // Chama via Netlify Function (resolve CORS em produção)

@@ -74,7 +74,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
     const [{ data: co }, { data: val }, { data: hist }, { data: sigs }, { data: marked }] = await Promise.all([
       supabase.from("companies_full").select("*").eq("id", companyId).single(),
       supabase.from("disc_validations").select("*").eq("company_id", companyId).order("created_at", {ascending:false}).limit(1).maybeSingle(),
-      supabase.from("disc_validations").select("*, profiles(full_name)").eq("company_id", companyId).order("created_at", {ascending:false}),
+      supabase.from("disc_validations").select("*").eq("company_id", companyId).order("created_at", {ascending:false}),
       supabase.from("icp_signals").select("*").eq("tenant_id", tenant?.id).eq("active", true).order("position"),
       supabase.from("company_icp_signals").select("*").eq("company_id", companyId),
     ]);
@@ -532,7 +532,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
               <div key={h.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:"0.5px solid #f0f0f0"}}>
                 <div>
                   <span style={{fontSize:13,fontWeight:500,color:r?.c||"#888"}}>{r?.l||h.human_rating}</span>
-                  <span style={{fontSize:12,color:"#aaa",marginLeft:10}}>{h.profiles?.full_name||"—"}</span>
+                  <span style={{fontSize:12,color:"#aaa",marginLeft:10}}>{"Comercial"}</span>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:12}}>
                   {h.ai_score!=null && <span style={{fontSize:12,color:"#aaa"}}>Score IA: {h.ai_score}</span>}
