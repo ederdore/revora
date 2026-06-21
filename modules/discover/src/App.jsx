@@ -302,25 +302,45 @@ function CompanyModal({company, onClose, onValidate, onEnrich, enrichingId, vali
 // ── PROFILE PAGE ──────────────────────────────────────────────
 function ProfilePage({CS}) {
   const {user,profile,tenant,role} = useAuth();
+  const [usageDetails, setUsageDetails] = useState(null);
   const plan = PLAN_CFG[tenant?.plan||"trial"];
   const modules = [
     {k:"module_feedback",l:"Feedback",icon:"⭐",desc:"Retenção e experiência de clientes"},
     {k:"module_discover",l:"Discover",icon:"🔍",desc:"Qualificação de leads B2B"},
     {k:"module_pulse",l:"Pulse",icon:"⚡",desc:"Prospeção automatizada"},
   ];
+
+  useEffect(()=>{
+    if(!tenant?.id)return;
+    // Load usage details for this month
+    const startOfMonth=new Date();startOfMonth.setDate(1);startOfMonth.setHours(0,0,0,0);
+    supabase.from("usage_transactions")
+      .select("type,cost_usd,created_at")
+      .eq("tenant_id",tenant.id)
+      .gte("created_at",startOfMonth.toISOString())
+      .then(({data})=>{
+        if(!data)return;
+        const searches=data.filter(t=>["google_maps","microlink"].includes(t.type)).length;
+        const aiCalls=data.filter(t=>t.type==="ai_analysis").length;
+        const totalCost=data.reduce((s,t)=>s+Number(t.cost_usd||0),0);
+        const googleCost=searches*0.032;
+        setUsageDetails({searches,aiCalls,totalCost,googleCost,aiCost:totalCost});
+      });
+  },[tenant]);
+
   return (
     <div style={{maxWidth:600,margin:"0 auto"}}>
       <h1 style={CS.h1}>Perfil & Plano</h1>
-      <p style={CS.sub}>Informação da conta e módulos activos</p>
+      <p style={CS.sub}>Informação da conta e utilização</p>
 
-      {/* UTILIZADOR */}
+      {/* CONTA */}
       <div style={{...CS.card,padding:24,marginBottom:16}}>
         <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Conta</p>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           {[
             {l:"Nome",v:profile?.full_name||"—"},
             {l:"Email",v:user?.email||"—"},
-            {l:"Role",v:role||"—"},
+            {l:"Função",v:{admin:"Administrador",manager:"Gestor",commercial:"Comercial"}[role]||role||"—"},
             {l:"Workspace",v:tenant?.name||"—"},
           ].map(f=>(
             <div key={f.l} style={{background:"#f9f9f8",borderRadius:8,padding:"10px 14px"}}>
@@ -336,6 +356,29 @@ function ProfilePage({CS}) {
         <UsageMeterFull tenantId={tenant?.id}/>
       </div>
 
+      {/* GASTOS DETALHADOS */}
+      {usageDetails&&(
+        <div style={{...CS.card,padding:24,marginBottom:16}}>
+          <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Gastos do mês actual</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
+            {[
+              {l:"Pesquisas",v:usageDetails.searches,sub:"enriquecimentos"},
+              {l:"Análises IA",v:usageDetails.aiCalls,sub:"chamadas Claude"},
+              {l:"Custo total",v:"$"+usageDetails.totalCost.toFixed(4),sub:"este mês"},
+            ].map(f=>(
+              <div key={f.l} style={{background:"#f9f9f8",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+                <p style={{fontSize:10,color:"#aaa",margin:"0 0 3px",textTransform:"uppercase",letterSpacing:0.5}}>{f.l}</p>
+                <p style={{fontSize:16,fontWeight:600,margin:"0 0 2px"}}>{f.v}</p>
+                <p style={{fontSize:10,color:"#aaa",margin:0}}>{f.sub}</p>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:"#aaa",padding:"8px 12px",background:"#f9f9f8",borderRadius:6}}>
+            Custo por pesquisa: ~$0.032 (Google) · Custo por análise IA: ~$0.007 (Claude Sonnet)
+          </div>
+        </div>
+      )}
+
       {/* PLANO */}
       <div style={{...CS.card,padding:24,marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -344,7 +387,7 @@ function ProfilePage({CS}) {
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:14}}>
           {[
-            {l:"Empresas",v:tenant?.plan==="trial"?"50":"Ilimitado"},
+            {l:"Pesquisas/mês",v:tenant?.plan==="trial"?"20":tenant?.plan==="starter"?"200":tenant?.plan==="pro"?"500":"2000"},
             {l:"Utilizadores",v:tenant?.plan==="trial"?"2":"Ilimitado"},
             {l:"Mercados",v:tenant?.plan==="enterprise"?"Todos":"1"},
           ].map(f=>(
@@ -356,18 +399,18 @@ function ProfilePage({CS}) {
         </div>
         {tenant?.plan==="trial"&&(
           <div style={{background:"#faeeda",borderRadius:8,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <p style={{fontSize:12,color:"#854F0B",margin:0}}>Período trial — upgrade para acesso completo</p>
+            <p style={{fontSize:12,color:"#854F0B",margin:0}}>Período trial — contacte-nos para upgrade</p>
             <button style={{padding:"5px 12px",borderRadius:6,border:"none",background:"#854F0B",color:"#fff",fontSize:12,cursor:"pointer"}}>Upgrade</button>
           </div>
         )}
       </div>
 
-      {/* MÓDULOS */}
+      {/* MÓDULOS ACTIVOS */}
       <div style={{...CS.card,padding:24,marginBottom:16}}>
-        <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Módulos</p>
+        <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Módulos da plataforma</p>
         {modules.map(m=>{
-          const active = tenant?.[m.k];
-          return (
+          const active=tenant?.[m.k];
+          return(
             <div key={m.k} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:"0.5px solid #f0f0f0"}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:18}}>{m.icon}</span>
@@ -384,18 +427,21 @@ function ProfilePage({CS}) {
         })}
       </div>
 
-      {/* ACESSO AO FEEDBACK */}
-      <div style={{...CS.card,padding:24}}>
-        <p style={{fontSize:13,fontWeight:500,marginBottom:10}}>Acesso rápido</p>
-        <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"#f9f9f8",borderRadius:8,textDecoration:"none",color:"#1a1a1a"}}>
-          <span style={{fontSize:20}}>⭐</span>
-          <div>
-            <p style={{fontSize:13,fontWeight:500,margin:0}}>Revora Feedback</p>
-            <p style={{fontSize:11,color:"#aaa",margin:0}}>Abrir módulo de retenção de clientes</p>
-          </div>
-          <span style={{marginLeft:"auto",color:"#aaa",fontSize:14}}>→</span>
-        </a>
-      </div>
+      {/* ACESSO RÁPIDO */}
+      {tenant?.module_feedback&&(
+        <div style={{...CS.card,padding:24}}>
+          <p style={{fontSize:13,fontWeight:500,marginBottom:10}}>Acesso rápido</p>
+          <a href={FEEDBACK_URL} target="_blank" rel="noopener noreferrer"
+            style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"#f9f9f8",borderRadius:8,textDecoration:"none",color:"#1a1a1a"}}>
+            <span style={{fontSize:20}}>⭐</span>
+            <div>
+              <p style={{fontSize:13,fontWeight:500,margin:0}}>Revora Feedback</p>
+              <p style={{fontSize:11,color:"#aaa",margin:0}}>Abrir módulo de retenção de clientes</p>
+            </div>
+            <span style={{marginLeft:"auto",color:"#aaa",fontSize:14}}>→</span>
+          </a>
+        </div>
+      )}
     </div>
   );
 }
@@ -911,7 +957,8 @@ function AppShell() {
     {k:"import",l:"Importar"},{k:"dashboard",l:"Dashboard"},
     {k:"review",l:"Opportunity Review"},{k:"validation",l:"Validação"},
     {k:"profile",l:"Perfil"},{k:"settings",l:"Configurações"},
-    ...(isAdmin?[{k:"admin",l:"Admin ⚡"}]:[]),
+    // Admin tab only shown when root admin is impersonating (for context)
+    // Regular clients never see this
   ];
 
   // If viewing a company page, show it full screen
