@@ -1246,8 +1246,7 @@ function AppShell() {
       commercial_note:c.commercial_note||"",
     }));
     const headers=Object.keys(rows[0]);
-    const csv=[headers.join(","),...rows.map(r=>headers.map(h=>`"${String(r[h]).replace(/"/g,'""')}"`).join(","))].join("
-");
+    const csv=[headers.join(","),...rows.map(r=>headers.map(h=>`"${String(r[h]).replace(/"/g,'""')}"`).join(","))].join("\n");
     const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
     const a=document.createElement("a");
     a.href=URL.createObjectURL(blob);
