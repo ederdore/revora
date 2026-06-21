@@ -8,6 +8,7 @@ import { enrichCompanyReal, analyzeCompanyMock, computeScores, rgpdFilter, getMi
 import { canSearch, logUsage, PLAN_LIMITS } from "./lib/usage.js";
 import { UsageMeterNav, UsageMeterFull } from "./components/UsageMeter.jsx";
 import CompanyPage from "./pages/CompanyPage.jsx";
+import ICPPage from "./pages/ICPPage.jsx";
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 const CLASS_CFG = {
@@ -1059,10 +1060,9 @@ function AppShell() {
 
   const navItems=[
     {k:"import",l:"Importar"},{k:"dashboard",l:"Dashboard"},
-    {k:"review",l:"Opportunity Review"},{k:"validation",l:"Validação"},
+    {k:"review",l:"Opportunity Review"},{k:"icp",l:"Perfil ICP"},
+    {k:"validation",l:"Validação"},
     {k:"profile",l:"Perfil"},{k:"settings",l:"Configurações"},
-    // Admin tab only shown when root admin is impersonating (for context)
-    // Regular clients never see this
   ];
 
   // If viewing a company page, show it full screen
@@ -1309,6 +1309,7 @@ function AppShell() {
         {page==="admin"&&isAdmin&&<AdminPanel/>}
         {page==="settings"&&<SettingsPage/>}
         {page==="profile"&&<ProfilePage CS={CS}/>}
+        {page==="icp"&&<ICPPage companies={companies} validations={validations} onSelectCompany={setSelectedCompanyId}/>}
         {page==="import"&&<ImportPage CS={CS} handleCSV={handleCSV} addManual={addManual} loading={dataLoading}/>}
 
         {page==="dashboard"&&(
