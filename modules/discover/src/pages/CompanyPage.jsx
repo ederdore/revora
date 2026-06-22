@@ -68,11 +68,17 @@ function ScorePill({label, value, color, bg, size="normal"}) {
   );
 }
 
-export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) {
+export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, icpProfile}) {
   const {user, tenant, logEvent} = useAuth();
   const [company, setCompany]   = useState(null);
   const [loading, setLoading]   = useState(true);
   const [tab, setTab]           = useState("overview");
+
+  // Contact editor state
+  const [editingContacts, setEditingContacts] = useState(false);
+  const [contactDraft, setContactDraft]       = useState({});
+  const [savingContacts, setSavingContacts]   = useState(false);
+  const [contactSaved, setContactSaved]       = useState(false);
 
   // Commercial analysis state
   const [note, setNote]         = useState("");
@@ -113,12 +119,54 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
       setHumanScore(co.human_score_value);
       setCombinedScore(co.combined_score);
       setCombinedClass(co.combined_class);
+      setLeadType(co.lead_type || "lead");
+      setLeadStatus(co.lead_status || "not_contacted");
+      setProducts(co.products_sold || "");
+      setContactDraft({
+        website:   co.website   || "",
+        email:     co.email     || "",
+        phone:     co.phone     || "",
+        whatsapp:  co.whatsapp  || "",
+        instagram: co.instagram || "",
+        facebook:  co.facebook  || "",
+        linkedin:  co.linkedin  || "",
+        tiktok:    co.tiktok    || "",
+      });
     }
     if (val) setValidation(val.human_rating);
     setHistory(hist || []);
     setIcpSignals(sigs || []);
     setMarkedSignals(marked || []);
     setLoading(false);
+  }
+
+  async function saveContacts() {
+    setSavingContacts(true);
+    const updates = {
+      website:   contactDraft.website   || null,
+      email:     contactDraft.email     || null,
+      phone:     contactDraft.phone     || null,
+      whatsapp:  contactDraft.whatsapp  || null,
+      instagram: contactDraft.instagram || null,
+      facebook:  contactDraft.facebook  || null,
+      linkedin:  contactDraft.linkedin  || null,
+      tiktok:    contactDraft.tiktok    || null,
+      data_source: "manual",
+    };
+    await supabase.from("disc_companies").update(updates).eq("id", companyId);
+    // Also update enrichment table
+    await supabase.from("disc_enrichment").upsert({
+      company_id: companyId,
+      tenant_id:  tenant?.id,
+      ...updates,
+      enrichment_status: "done",
+      _source: "manual",
+    }, { onConflict: "company_id" });
+    setSavingContacts(false);
+    setContactSaved(true);
+    setEditingContacts(false);
+    setTimeout(() => setContactSaved(false), 2000);
+    loadAll();
   }
 
   async function saveNote() {
@@ -284,11 +332,50 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
               )}
             </>
           )}
-          <button onClick={() => onEnrich(company)} disabled={isEnriching} style={{...S.btn,fontSize:12}} title="Reenriquecer">
+          <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching} style={{...S.btn,fontSize:12}} title="Reenriquecer">
             {isEnriching ? "⏳" : "↺"}
           </button>
         </div>
       </div>
+
+      {/* Enrichment status tag */}
+      {!company.enrichment_status && (
+        <div style={{background:"#FAEEDA",border:"0.5px solid #f0c87a",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13}}>⚠️</span>
+          <span style={{fontSize:12,color:"#854F0B",fontWeight:500}}>Enriquecimento pendente</span>
+          <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching}
+            style={{fontSize:11,padding:"3px 10px",borderRadius:6,border:"none",background:"#854F0B",color:"#fff",cursor:"pointer",marginLeft:4}}>
+            {isEnriching ? "A analisar..." : "Enriquecer agora"}
+          </button>
+        </div>
+      )}
+      {company.enrichment_status && company.data_source === "mock" && (
+        <div style={{background:"#fff8ed",border:"0.5px solid #f0c87a",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13}}>🟡</span>
+          <span style={{fontSize:12,color:"#854F0B",fontWeight:500}}>Dados estimados — crawl real não disponível</span>
+          <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching}
+            style={{fontSize:11,padding:"3px 10px",borderRadius:6,border:"none",background:"#854F0B",color:"#fff",cursor:"pointer",marginLeft:4}}>
+            {isEnriching ? "A tentar..." : "Tentar novamente"}
+          </button>
+        </div>
+      )}
+      {company.enrichment_status && company.data_source === "microlink" && (
+        <div style={{background:"#EAF3DE",border:"0.5px solid #b5d9a0",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13}}>✅</span>
+          <span style={{fontSize:12,color:"#3B6D11",fontWeight:500}}>Enriquecido via Microlink</span>
+          {company.enrichment_updated_at && (
+            <span style={{fontSize:11,color:"#3B6D11",opacity:0.7}}>
+              · {new Date(company.enrichment_updated_at).toLocaleDateString("pt-PT")}
+            </span>
+          )}
+        </div>
+      )}
+      {company.enrichment_status && company.data_source === "manual" && (
+        <div style={{background:"#f5f5f4",border:"0.5px solid #e0e0e0",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:13}}>✏️</span>
+          <span style={{fontSize:12,color:"#888",fontWeight:500}}>Dados introduzidos manualmente</span>
+        </div>
+      )}
 
       {/* Phase indicator */}
       {phase > 1 && (
@@ -316,33 +403,97 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
       {tab==="overview" && (
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
           <div style={S.card}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            {/* Header com status comercial */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
               <p style={{fontSize:13,fontWeight:500,margin:0}}>Contactos</p>
-              {company.enrichment_status && <SourceBadge source={company.data_source||"mock"}/>}
-            </div>
-            {[
-              {l:"Website",  v:company.website,   href:company.website,    color:"#185FA5"},
-              {l:"Email",    v:company.email,     href:`mailto:${company.email}`, color:"#1a1a1a"},
-              {l:"Telefone", v:company.phone,     href:`tel:${company.phone}`,    color:"#1a1a1a"},
-              {l:"WhatsApp", v:company.whatsapp,  href:`https://wa.me/${(company.whatsapp||"").replace(/\D/g,"")}`, color:"#25D366"},
-              {l:"Instagram",v:company.instagram, href:null, color:"#E1306C"},
-              {l:"LinkedIn", v:company.linkedin,  href:company.linkedin?`https://${company.linkedin}`:null, color:"#0077B5"},
-            ].filter(f => f.v).map(f => (
-              <div key={f.l} style={{marginBottom:8}}>
-                <span style={S.label}>{f.l}</span>
-                {f.href
-                  ? <a href={f.href} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:f.color,textDecoration:"none",wordBreak:"break-all"}}>{f.v}</a>
-                  : <span style={{fontSize:13,color:f.color}}>{f.v}</span>}
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {/* Lead type badge */}
+                {(() => {
+                  const t = LEAD_TYPES.find(t=>t.v===(company.lead_type||"lead")) || LEAD_TYPES[0];
+                  return <span style={{fontSize:11,background:t.bg,color:t.c,padding:"2px 8px",borderRadius:4,fontWeight:500}}>{t.icon} {t.l}</span>;
+                })()}
+                {/* Lead status badge */}
+                {(() => {
+                  const s = LEAD_STATUSES.find(s=>s.v===(company.lead_status||"not_contacted")) || LEAD_STATUSES[0];
+                  return <span style={{fontSize:11,color:s.c,fontWeight:500,padding:"2px 6px",borderRadius:4,background:s.c+"15"}}>{s.l}</span>;
+                })()}
+                {company.enrichment_status && <SourceBadge source={company.data_source||"mock"}/>}
+                <button onClick={() => setEditingContacts(e => !e)} style={{
+                  fontSize:11,padding:"3px 10px",borderRadius:6,
+                  border:"0.5px solid #ddd",background:editingContacts?"#1a1a1a":"#fff",
+                  color:editingContacts?"#fff":"#888",cursor:"pointer",
+                }}>
+                  {editingContacts ? "✕ Fechar" : "✏ Editar"}
+                </button>
               </div>
-            ))}
-            {!company.website && !company.email && !company.phone && (
-              <p style={{fontSize:12,color:"#ccc"}}>Sem dados — enriqueça a empresa</p>
-            )}
-            {company.data_source==="mock" && company.enrichment_status && (
-              <div style={{marginTop:10,padding:"7px 10px",background:"#FAEEDA",borderRadius:6}}>
-                <p style={{fontSize:11,color:"#854F0B",margin:0}}>
-                  ⚠ Dados estimados por categoria. Para dados reais, o site precisa de ser acessível via Microlink.
-                </p>
+            </div>
+
+            {editingContacts ? (
+              /* ── EDITOR DE CONTACTOS ── */
+              <div>
+                {[
+                  {k:"website",   l:"Website",   placeholder:"https://www.empresa.pt"},
+                  {k:"email",     l:"Email",      placeholder:"geral@empresa.pt"},
+                  {k:"phone",     l:"Telefone",   placeholder:"+351 21 000 0000"},
+                  {k:"whatsapp",  l:"WhatsApp",   placeholder:"https://wa.me/351910000000"},
+                  {k:"instagram", l:"Instagram",  placeholder:"https://instagram.com/empresa"},
+                  {k:"facebook",  l:"Facebook",   placeholder:"https://facebook.com/empresa"},
+                  {k:"linkedin",  l:"LinkedIn",   placeholder:"https://linkedin.com/company/empresa"},
+                  {k:"tiktok",    l:"TikTok",     placeholder:"https://tiktok.com/@empresa"},
+                ].map(f => (
+                  <div key={f.k} style={{marginBottom:10}}>
+                    <label style={S.label}>{f.l}</label>
+                    <input
+                      value={contactDraft[f.k] || ""}
+                      onChange={e => setContactDraft(d => ({...d, [f.k]: e.target.value}))}
+                      placeholder={f.placeholder}
+                      style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #ddd",fontSize:12,color:"#1a1a1a",background:"#fff",boxSizing:"border-box"}}
+                    />
+                  </div>
+                ))}
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12}}>
+                  <button onClick={() => setEditingContacts(false)} style={S.btn}>Cancelar</button>
+                  <button onClick={saveContacts} disabled={savingContacts} style={{...S.btnP,background:contactSaved?"#3B6D11":"#1a1a1a"}}>
+                    {savingContacts?"A guardar...":contactSaved?"✓ Guardado":"Guardar contactos"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── VISUALIZAÇÃO DE CONTACTOS ── */
+              <div>
+                {[
+                  {l:"Website",   v:company.website,   href:company.website,                                          color:"#185FA5"},
+                  {l:"Email",     v:company.email,     href:`mailto:${company.email}`,                                color:"#1a1a1a"},
+                  {l:"Telefone",  v:company.phone,     href:`tel:${company.phone}`,                                   color:"#1a1a1a"},
+                  {l:"WhatsApp",  v:company.whatsapp,  href:company.whatsapp?.startsWith("http")?company.whatsapp:`https://wa.me/${(company.whatsapp||"").replace(/\D/g,"")}`, color:"#25D366"},
+                  {l:"Instagram", v:company.instagram, href:company.instagram?.startsWith("http")?company.instagram:null, color:"#E1306C"},
+                  {l:"Facebook",  v:company.facebook,  href:company.facebook?.startsWith("http")?company.facebook:null,  color:"#1877F2"},
+                  {l:"LinkedIn",  v:company.linkedin,  href:company.linkedin?.startsWith("http")?company.linkedin:`https://${company.linkedin}`, color:"#0077B5"},
+                  {l:"TikTok",    v:company.tiktok,    href:company.tiktok?.startsWith("http")?company.tiktok:null,       color:"#000"},
+                ].filter(f => f.v).map(f => (
+                  <div key={f.l} style={{marginBottom:8}}>
+                    <span style={S.label}>{f.l}</span>
+                    {f.href
+                      ? <a href={f.href} target="_blank" rel="noopener noreferrer" style={{fontSize:13,color:f.color,textDecoration:"none",wordBreak:"break-all"}}>{f.v}</a>
+                      : <span style={{fontSize:13,color:f.color}}>{f.v}</span>}
+                  </div>
+                ))}
+                {!company.website && !company.email && !company.phone && (
+                  <div style={{textAlign:"center",padding:"16px 0"}}>
+                    <p style={{fontSize:12,color:"#ccc",marginBottom:10}}>Sem dados de contacto</p>
+                    <button onClick={() => setEditingContacts(true)} style={S.btnP}>✏ Adicionar manualmente</button>
+                  </div>
+                )}
+                {/* Concorrentes detectados */}
+                {company.competitors_detected?.length > 0 && (
+                  <div style={{marginTop:12,padding:"8px 10px",background:"#E6F1FB",borderRadius:6}}>
+                    <p style={{fontSize:11,color:"#185FA5",fontWeight:500,margin:"0 0 4px"}}>🏪 Vende concorrentes detectados</p>
+                    <p style={{fontSize:12,color:"#185FA5",margin:0}}>{company.competitors_detected.join(", ")}</p>
+                    {company.is_active_reseller && (
+                      <p style={{fontSize:11,color:"#534AB7",margin:"4px 0 0",fontWeight:500}}>★ Revendedor activo — alta prioridade</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -380,7 +531,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
             ) : (
               <div style={{textAlign:"center",padding:"20px 0"}}>
                 <p style={{fontSize:12,color:"#aaa",marginBottom:10}}>Empresa ainda não enriquecida</p>
-                <button onClick={() => onEnrich(company)} disabled={isEnriching} style={S.btnP}>
+                <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching} style={S.btnP}>
                   {isEnriching?"A analisar...":"⚡ Enriquecer agora"}
                 </button>
               </div>
@@ -459,7 +610,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
               <div style={{fontSize:32,marginBottom:12}}>🤖</div>
               <p style={{fontSize:14,fontWeight:500,marginBottom:6}}>Análise IA não gerada</p>
               <p style={{fontSize:13,color:"#888",marginBottom:20}}>Enriqueça a empresa para gerar análise automática</p>
-              <button onClick={() => onEnrich(company)} disabled={isEnriching} style={S.btnP}>
+              <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching} style={S.btnP}>
                 {isEnriching?"A analisar...":"⚡ Enriquecer agora"}
               </button>
             </div>
