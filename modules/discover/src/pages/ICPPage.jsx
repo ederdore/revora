@@ -327,7 +327,8 @@ function ICPWizard({ onSave, onCancel, tenant, existing }) {
 
 // ── ICP PAGE ──────────────────────────────────────────────────
 export default function ICPPage({ companies, validations, onSelectCompany }) {
-  const { tenant } = useAuth();
+  const { tenant: authTenant, impersonating } = useAuth();
+  const tenant = authTenant || impersonating?.tenant || null;
   const [profiles,    setProfiles]    = useState([]);
   const [learned,     setLearned]     = useState({});
   const [activeICP,   setActiveICP]   = useState(null);
@@ -376,7 +377,8 @@ export default function ICPPage({ companies, validations, onSelectCompany }) {
     loadProfiles();
   }
 
-  if(loading) return <div style={{padding:40,textAlign:"center",color:"#888",fontSize:13}}>A carregar...</div>;
+  if(!tenant) return <div style={{padding:40,textAlign:"center",color:"#888",fontSize:13}}>A carregar workspace...</div>;
+  if(loading) return <div style={{padding:40,textAlign:"center",color:"#888",fontSize:13}}>A carregar perfis ICP...</div>;
 
   if(showWizard||editProfile) return (
     <div>

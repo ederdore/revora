@@ -1194,7 +1194,7 @@ function AppShell() {
 
       // Scoring com keywords do tenant
       const scores = computeScores(enrichment, tenant);
-      await supabase.from("disc_scoring").upsert({
+      const { error: scoringErr } = await supabase.from("disc_scoring").upsert({
         tenant_id:      tenant.id,
         company_id:     company.id,
         fit_score:      scores.fitScore,
@@ -1205,6 +1205,7 @@ function AppShell() {
         score_class:    scores.scoreClass,
         model_version:  1,
       },{onConflict:"company_id"});
+      if(scoringErr) console.error("[Revora] disc_scoring error:", scoringErr.message);
 
       // Sinais detectados
       await supabase.from("disc_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
@@ -1220,7 +1221,8 @@ function AppShell() {
       }
       await supabase.from("disc_ai_analysis").upsert({tenant_id:tenant.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
 
-      await supabase.from("disc_companies").update({status:"scored"}).eq("id",company.id);
+      const { error: statusErr } = await supabase.from("disc_companies").update({status:"scored"}).eq("id",company.id);
+      if(statusErr) console.error("[Revora] status update error:", statusErr.message);
       await logEvent("company.enriched","company",company.id,{score:scores.finalScore,class:scores.scoreClass});
       // Regista uso para controlo de limites e custos reais
       await logUsage(tenant.id, "microlink", company.id);
@@ -1326,7 +1328,16 @@ function AppShell() {
   }
 
   const top20=[...companies].filter(c=>c.final_score!=null||c.combined_score!=null).sort((a,b)=>(b.combined_score??b.final_score??0)-(a.combined_score??a.final_score??0)).slice(0,20);
-  const filtered=filterClass==="all"?companies:companies.filter(c=>c.score_class===filterClass);
+  const filtered=companies
+    .filter(c=>filterClass==="all"||(c.combined_class||c.score_class)===filterClass)
+    .filter(c=>{
+      if(!filterSearch) return true;
+      const s=filterSearch.toLowerCase();
+      return (c.name||"").toLowerCase().includes(s)
+        ||(c.city||"").toLowerCase().includes(s)
+        ||(c.category||"").toLowerCase().includes(s)
+        ||(c.email||"").toLowerCase().includes(s);
+    });
 
   const CS={
     nav:{background:"#fff",borderBottom:"0.5px solid #e5e5e5",padding:"0 20px",display:"flex",alignItems:"center",position:"sticky",top:0,zIndex:100},
