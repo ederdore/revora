@@ -15,6 +15,33 @@ const CLASS_CFG = {
   A:{bg:"#EAF3DE",c:"#3B6D11"},B:{bg:"#E6F1FB",c:"#185FA5"},
   C:{bg:"#FAEEDA",c:"#854F0B"},D:{bg:"#FCEBEB",c:"#A32D2D"},
 };
+
+const SOURCE_CFG = {
+  microlink:   { l:"Microlink",    icon:"🔗", c:"#185FA5", bg:"#E6F1FB", desc:"Crawl real do site" },
+  google_maps: { l:"Google Maps",  icon:"🗺",  c:"#3B6D11", bg:"#EAF3DE", desc:"Google Maps API" },
+  semrush:     { l:"SEMrush",      icon:"📊", c:"#534AB7", bg:"#EEEDFE", desc:"SEMrush API" },
+  outscraper:  { l:"Outscraper",   icon:"⚙",  c:"#854F0B", bg:"#FAEEDA", desc:"Outscraper API" },
+  manual:      { l:"Manual",       icon:"✏",  c:"#888",    bg:"#f5f5f4", desc:"Introduzido manualmente" },
+  csv:         { l:"CSV",          icon:"📂", c:"#888",    bg:"#f5f5f4", desc:"Importado via CSV" },
+  mock:        { l:"Estimado",     icon:"⚠",  c:"#854F0B", bg:"#FAEEDA", desc:"Dados estimados por categoria" },
+};
+
+function SourceBadge({ source, size="small" }) {
+  if (!source) return null;
+  const cfg = SOURCE_CFG[source] || SOURCE_CFG.mock;
+  const isSmall = size === "small";
+  return (
+    <span title={cfg.desc} style={{
+      display:"inline-flex", alignItems:"center", gap:3,
+      fontSize: isSmall ? 10 : 11,
+      background: cfg.bg, color: cfg.c,
+      padding: isSmall ? "1px 6px" : "3px 8px",
+      borderRadius: 4, fontWeight: 500,
+    }}>
+      {cfg.icon} {cfg.l}
+    </span>
+  );
+}
 const RATINGS = [
   {v:"excellent",l:"⭐ Excelente",c:"#854F0B"},
   {v:"good",l:"👍 Boa oportunidade",c:"#3B6D11"},
@@ -33,39 +60,46 @@ const FEEDBACK_URL = import.meta.env.VITE_FEEDBACK_URL || "https://starloop.verc
 async function callClaudeAI(company, enrichment, tenant) {
   const ctx = tenant?.ai_prompt_context || "Avalia o potencial comercial desta empresa como parceiro de distribuição/revenda.";
   const biz = tenant?.business_context || "Empresa de suplementos nutricionais premium.";
-  const isMock = enrichment._source === "mock";
-  const prompt = `És um analista comercial especializado em parcerias B2B em Portugal.
+  const isMock = !enrichment._source || enrichment._source === "mock";
+  const hasRealContent = !!(enrichment.website_title && enrichment.meta_description && enrichment.visible_content?.length > 100);
 
-CONTEXTO DO CLIENTE: ${biz}
-INSTRUÇÃO: ${ctx}
+  const prompt = `És um especialista em desenvolvimento comercial B2B para o mercado português.
 
-DADOS DA EMPRESA:
+━━━ CONTEXTO DO CLIENTE ━━━
+${biz}
+Objectivo específico: ${ctx}
+
+━━━ EMPRESA A ANALISAR ━━━
 Nome: ${company.name}
 Website: ${company.website || "não disponível"}
-Categoria: ${company.category || "—"}
-Cidade: ${company.city || "—"}
-País: ${company.country || "Portugal"}
-Título do site: ${enrichment.website_title || "—"}
-Descrição: ${enrichment.meta_description || "—"}
-Conteúdo visível: ${(enrichment.visible_content || "").substring(0, 800)}
-Instagram: ${enrichment.instagram || "não detectado"}
-LinkedIn: ${enrichment.linkedin || "não detectado"}
-Email: ${enrichment.email || "não detectado"}
-Telefone: ${enrichment.phone || "não detectado"}
-WhatsApp: ${enrichment.whatsapp || "não detectado"}
-Loja online: ${enrichment.has_online_store ? "sim" : "não detectado"}
-Fonte dos dados: ${isMock ? "estimativa por categoria (sem crawl real)" : "site real analisado"}
+Categoria: ${company.category || "não especificada"}
+Cidade: ${company.city || "Portugal"}
+${enrichment.website_title ? `Título do site: ${enrichment.website_title}` : ""}
+${enrichment.meta_description ? `Descrição: ${enrichment.meta_description}` : ""}
+${enrichment.visible_content ? `Conteúdo: ${enrichment.visible_content.substring(0, 1000)}` : ""}
 
-INSTRUÇÕES DE ANÁLISE:
-1. executive_summary: 2-3 frases específicas sobre ESTA empresa e o seu fit com o cliente. Menciona o nome da empresa.
-2. strengths: 3-4 pontos fortes ESPECÍFICOS desta empresa (não genéricos). Baseia-te nos dados reais do site.
-3. weaknesses: 2-3 pontos fracos ou riscos REAIS identificados nos dados.
-4. partnership_potential: "alto" se fit claro e contacto disponível, "médio" se potencial mas incerteza, "baixo" se pouco alinhamento.
-5. recommended_action: acção comercial CONCRETA e específica para esta empresa (canal, mensagem, timing).
-6. confidence_score: 0-100. Usa 0-30 se dados são estimativas, 40-70 se dados parciais, 70-95 se site real analisado.
+━━━ PRESENÇA DIGITAL ━━━
+Instagram: ${enrichment.instagram || "não encontrado"}
+LinkedIn: ${enrichment.linkedin || "não encontrado"}
+Facebook: ${enrichment.facebook || "não encontrado"}
+Email contacto: ${enrichment.email || "não encontrado"}
+Telefone: ${enrichment.phone || "não encontrado"}
+WhatsApp: ${enrichment.whatsapp || "não encontrado"}
+Loja online: ${enrichment.has_online_store ? "✓ sim" : "não detectada"}
 
-Responde APENAS com JSON válido sem markdown:
-{"executive_summary":"...","strengths":["...","...","..."],"weaknesses":["...","..."],"partnership_potential":"alto|médio|baixo","recommended_action":"...","confidence_score":75}`;
+━━━ INSTRUÇÕES ━━━
+Analisa esta empresa ESPECIFICAMENTE para o contexto acima. 
+
+Para strengths: identifica 3-4 características REAIS desta empresa que a tornam um bom parceiro. Sê específico — menciona o sector, localização, presença digital real, tipo de clientela provável.
+
+Para weaknesses: identifica 2-3 riscos ou lacunas REAIS. Exemplos: ausência de contacto directo, concorrência já instalada, baixa presença digital, sector periférico ao nicho.
+
+Para recommended_action: dá uma acção CONCRETA — qual canal usar (email/Instagram/visita), o que dizer na primeira abordagem, qual o ângulo comercial ideal para ESTA empresa específica.
+
+Qualidade dos dados disponíveis: ${hasRealContent ? "site real analisado — alta confiança" : "dados estimados por categoria — confiança moderada"}
+
+Responde APENAS com JSON válido (sem markdown, sem texto extra):
+{"executive_summary":"2-3 frases sobre esta empresa e fit específico","strengths":["ponto 1","ponto 2","ponto 3"],"weaknesses":["risco 1","risco 2"],"partnership_potential":"alto|médio|baixo","recommended_action":"acção concreta e específica","confidence_score":65}`;
 
   try {
     // Chama via Netlify Function (resolve CORS em produção)
@@ -1033,15 +1067,16 @@ function AppShell() {
   const showToast=(text,type="info")=>setToast({text,type});
 
   const loadCompanies=useCallback(async()=>{
-    if(!tenant)return;setDataLoading(true);
+    const t = tenant || impersonating?.tenant;
+    if(!t)return;setDataLoading(true);
     // Load companies - order by combined_score first, then final_score
-    const{data}=await supabase.from("companies_full").select("*").eq("tenant_id",tenant.id).order("combined_score",{ascending:false,nullsFirst:false}).order("final_score",{ascending:false,nullsFirst:false});
+    const{data}=await supabase.from("companies_full").select("*").eq("tenant_id",t.id).order("combined_score",{ascending:false,nullsFirst:false}).order("final_score",{ascending:false,nullsFirst:false});
     setCompanies(data||[]);
 
     // Load all validations from DB (bug 4 fix)
     const{data:vals}=await supabase.from("disc_validations")
       .select("company_id,human_rating")
-      .eq("tenant_id",tenant.id)
+      .eq("tenant_id",t.id)
       .order("created_at",{ascending:false});
     if(vals){
       const valMap={};
@@ -1058,8 +1093,10 @@ function AppShell() {
   // Root admin without impersonation → goes to admin panel
   if(isAdmin&&!impersonating&&!tenant)return <RootAdminShell/>;
 
-  // Guard: if impersonating but tenant not yet set, show loading
-  if(isAdmin&&impersonating&&!tenant)return(
+  // Guard: if impersonating but tenant not yet set, use impersonating.tenant directly
+  // This prevents getting stuck on "A carregar workspace"
+  const effectiveTenant = tenant || (impersonating?.tenant) || null;
+  if(isAdmin&&impersonating&&!effectiveTenant)return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"#888",fontSize:13}}>
       A carregar workspace...
     </div>
@@ -1148,7 +1185,12 @@ function AppShell() {
       // RGPD: filtra emails pessoais, marca fonte pública, define retenção
       const enrichment = rgpdFilter({ ...rawEnrichment, tenant_id:tenant.id, company_id:company.id });
 
-      await supabase.from("disc_enrichment").upsert(enrichment, {onConflict:"company_id"});
+      // Add source tracking to enrichment
+      const enrichmentWithSource = {
+        ...enrichment,
+        data_source: _source || "mock",
+      };
+      await supabase.from("disc_enrichment").upsert(enrichmentWithSource, {onConflict:"company_id"});
 
       // Scoring com keywords do tenant
       const scores = computeScores(enrichment, tenant);
@@ -1420,18 +1462,21 @@ function AppShell() {
                         </div>
                       )}
 
-                      {/* Contactos */}
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                      {/* Contactos + source */}
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10,alignItems:"center"}}>
                         {c.email     && <span style={{fontSize:10,color:"#185FA5"}}>✉</span>}
                         {c.phone     && <span style={{fontSize:10,color:"#555"}}>📞</span>}
                         {c.instagram && <span style={{fontSize:10,color:"#E1306C"}}>📸</span>}
                         {c.whatsapp  && <span style={{fontSize:10,color:"#25D366"}}>💬</span>}
                         {c.linkedin  && <span style={{fontSize:10,color:"#0077B5"}}>in</span>}
-                        {c.partnership_potential && (
-                          <span style={{fontSize:10,fontWeight:500,color:c.partnership_potential==="alto"?"#3B6D11":c.partnership_potential==="baixo"?"#A32D2D":"#854F0B",marginLeft:"auto"}}>
-                            {c.partnership_potential}
-                          </span>
-                        )}
+                        <span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:4}}>
+                          {c.enrichment_status&&<SourceBadge source={c.data_source||"mock"}/>}
+                          {c.partnership_potential && (
+                            <span style={{fontSize:10,fontWeight:500,color:c.partnership_potential==="alto"?"#3B6D11":c.partnership_potential==="baixo"?"#A32D2D":"#854F0B"}}>
+                              {c.partnership_potential}
+                            </span>
+                          )}
+                        </span>
                       </div>
 
                       {/* Bottom: validation + action */}

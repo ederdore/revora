@@ -3,6 +3,29 @@ import { supabase } from "../supabaseClient.js";
 import { useAuth } from "../AuthContext.jsx";
 // hybridScore utils used inline for reliability
 
+const SOURCE_CFG = {
+  microlink:   { l:"Microlink",   icon:"🔗", c:"#185FA5", bg:"#E6F1FB", desc:"Crawl real do site" },
+  google_maps: { l:"Google Maps", icon:"🗺",  c:"#3B6D11", bg:"#EAF3DE", desc:"Google Maps API" },
+  semrush:     { l:"SEMrush",     icon:"📊", c:"#534AB7", bg:"#EEEDFE", desc:"SEMrush API" },
+  outscraper:  { l:"Outscraper",  icon:"⚙",  c:"#854F0B", bg:"#FAEEDA", desc:"Outscraper API" },
+  manual:      { l:"Manual",      icon:"✏",  c:"#888",    bg:"#f5f5f4", desc:"Introduzido manualmente" },
+  csv:         { l:"CSV",         icon:"📂", c:"#888",    bg:"#f5f5f4", desc:"Importado via CSV" },
+  mock:        { l:"Estimado",    icon:"⚠",  c:"#854F0B", bg:"#FAEEDA", desc:"Dados estimados — sem crawl real" },
+};
+
+function SourceBadge({ source }) {
+  const cfg = SOURCE_CFG[source] || SOURCE_CFG.mock;
+  return (
+    <span title={cfg.desc} style={{
+      display:"inline-flex", alignItems:"center", gap:4,
+      fontSize:11, background:cfg.bg, color:cfg.c,
+      padding:"3px 8px", borderRadius:5, fontWeight:500,
+    }}>
+      {cfg.icon} {cfg.l} — {cfg.desc}
+    </span>
+  );
+}
+
 const CLASS_CFG = {
   A:{bg:"#EAF3DE",c:"#3B6D11"},
   B:{bg:"#E6F1FB",c:"#185FA5"},
@@ -276,7 +299,10 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
       {tab==="overview" && (
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
           <div style={S.card}>
-            <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Contactos</p>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <p style={{fontSize:13,fontWeight:500,margin:0}}>Contactos</p>
+              {company.enrichment_status && <SourceBadge source={company.data_source||"mock"}/>}
+            </div>
             {[
               {l:"Website",  v:company.website,   href:company.website,    color:"#185FA5"},
               {l:"Email",    v:company.email,     href:`mailto:${company.email}`, color:"#1a1a1a"},
@@ -294,6 +320,13 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
             ))}
             {!company.website && !company.email && !company.phone && (
               <p style={{fontSize:12,color:"#ccc"}}>Sem dados — enriqueça a empresa</p>
+            )}
+            {company.data_source==="mock" && company.enrichment_status && (
+              <div style={{marginTop:10,padding:"7px 10px",background:"#FAEEDA",borderRadius:6}}>
+                <p style={{fontSize:11,color:"#854F0B",margin:0}}>
+                  ⚠ Dados estimados por categoria. Para dados reais, o site precisa de ser acessível via Microlink.
+                </p>
+              </div>
             )}
           </div>
 
