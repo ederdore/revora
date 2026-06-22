@@ -9,6 +9,7 @@ import { canSearch, logUsage, PLAN_LIMITS } from "./lib/usage.js";
 import { UsageMeterNav, UsageMeterFull } from "./components/UsageMeter.jsx";
 import CompanyPage from "./pages/CompanyPage.jsx";
 import ICPPage from "./pages/ICPPage.jsx";
+import ListsPage from "./pages/ListsPage.jsx";
 
 // ── CONSTANTS ─────────────────────────────────────────────────
 const CLASS_CFG = {
@@ -1113,7 +1114,7 @@ function AppShell() {
   const navItems=[
     {k:"import",l:"Importar"},{k:"dashboard",l:"Dashboard"},
     {k:"review",l:"Opportunity Review"},{k:"icp",l:"Perfil ICP"},
-    {k:"validation",l:"Validação"},
+    {k:"lists",l:"Listas"},{k:"validation",l:"Validação"},
     {k:"profile",l:"Perfil"},{k:"settings",l:"Configurações"},
   ];
 
@@ -1377,6 +1378,7 @@ function AppShell() {
         {page==="settings"&&<SettingsPage/>}
         {page==="profile"&&<ProfilePage CS={CS}/>}
         {page==="icp"&&<ICPPage companies={companies} validations={validations} onSelectCompany={setSelectedCompanyId}/>}
+        {page==="lists"&&<ListsPage companies={companies} onSelectCompany={setSelectedCompanyId}/>}
         {page==="import"&&<ImportPage CS={CS} handleCSV={handleCSV} addManual={addManual} loading={dataLoading}/>}
 
         {page==="dashboard"&&(
@@ -1490,6 +1492,19 @@ function AppShell() {
                         </span>
                       </div>
 
+                      {/* Lead type + status */}
+                      {(c.lead_type&&c.lead_type!=="lead"||c.lead_status&&c.lead_status!=="not_contacted")&&(
+                        <div style={{display:"flex",gap:5,marginBottom:6,flexWrap:"wrap"}}>
+                          {c.lead_type&&c.lead_type!=="lead"&&(()=>{
+                            const t=["lead","prospect","client","partner","inactive"].map((v,i)=>({v,l:["Lead","Prospect","Cliente","Parceiro","Inactivo"][i],c:["#888","#185FA5","#3B6D11","#534AB7","#A32D2D"][i],bg:["#f5f5f4","#E6F1FB","#EAF3DE","#EEEDFE","#FCEBEB"][i]})).find(x=>x.v===c.lead_type);
+                            return t?<span style={{fontSize:10,background:t.bg,color:t.c,padding:"1px 6px",borderRadius:3,fontWeight:500}}>{t.l}</span>:null;
+                          })()}
+                          {c.lead_status&&c.lead_status!=="not_contacted"&&(()=>{
+                            const s=["not_contacted","contacted","negotiating","closed","lost"].map((v,i)=>({v,l:["Não contactado","Contactado","Em negociação","Fechado","Perdido"][i],c:["#888","#185FA5","#854F0B","#3B6D11","#A32D2D"][i]})).find(x=>x.v===c.lead_status);
+                            return s?<span style={{fontSize:10,color:s.c,fontWeight:500}}>{s.l}</span>:null;
+                          })()}
+                        </div>
+                      )}
                       {/* Bottom: validation + action */}
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",borderTop:"0.5px solid #f5f5f4",paddingTop:8}}>
                         <div>

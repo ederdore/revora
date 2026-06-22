@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient.js";
 import { useAuth } from "../AuthContext.jsx";
 // hybridScore utils used inline for reliability
+import { LEAD_TYPES, LEAD_STATUSES } from "./ListsPage.jsx";
 
 const SOURCE_CFG = {
   microlink:   { l:"Microlink",   icon:"🔗", c:"#185FA5", bg:"#E6F1FB", desc:"Crawl real do site" },
@@ -89,6 +90,11 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
 
   // History
   const [history, setHistory] = useState([]);
+  const [leadType,   setLeadType]   = useState("lead");
+  const [leadStatus, setLeadStatus] = useState("not_contacted");
+  const [products,   setProducts]   = useState("");
+  const [savingLead, setSavingLead] = useState(false);
+  const [leadSaved,  setLeadSaved]  = useState(false);
 
   useEffect(() => { loadAll(); }, [companyId]);
 
@@ -120,6 +126,17 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
     await supabase.from("disc_companies").update({ commercial_note: note }).eq("id", companyId);
     setSavingNote(false); setNoteSaved(true);
     setTimeout(() => setNoteSaved(false), 2000);
+  }
+
+  async function saveLead() {
+    setSavingLead(true);
+    await supabase.from("disc_companies").update({
+      lead_type:    leadType,
+      lead_status:  leadStatus,
+      products_sold:products,
+    }).eq("id", companyId);
+    setSavingLead(false); setLeadSaved(true);
+    setTimeout(() => setLeadSaved(false), 2000);
   }
 
   async function submitValidation(rating) {
@@ -536,6 +553,54 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId}) 
           )}
 
           {/* Nota comercial */}
+          {/* TIPO + STATUS + PRODUTOS */}
+          <div style={S.card}>
+            <p style={{fontSize:13,fontWeight:500,marginBottom:14}}>Marcação do lead</p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <div>
+                <label style={S.label}>Tipo de relação</label>
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {LEAD_TYPES.map(t=>(
+                    <button key={t.v} onClick={()=>setLeadType(t.v)}
+                      style={{padding:"5px 10px",borderRadius:6,fontSize:12,cursor:"pointer",
+                        border:"0.5px solid",borderColor:leadType===t.v?t.c:"#ddd",
+                        background:leadType===t.v?t.bg:"#fff",color:leadType===t.v?t.c:"#888",
+                        fontWeight:leadType===t.v?500:400}}>
+                      {t.icon} {t.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label style={S.label}>Status comercial</label>
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {LEAD_STATUSES.map(s=>(
+                    <button key={s.v} onClick={()=>setLeadStatus(s.v)}
+                      style={{padding:"5px 10px",borderRadius:6,fontSize:12,cursor:"pointer",
+                        border:"0.5px solid",borderColor:leadStatus===s.v?s.c:"#ddd",
+                        background:leadStatus===s.v?s.c+"15":"#fff",color:leadStatus===s.v?s.c:"#888",
+                        fontWeight:leadStatus===s.v?500:400}}>
+                      {s.l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={S.label}>Produtos que vende (texto livre)</label>
+              <input value={products} onChange={e=>setProducts(e.target.value)}
+                placeholder="Ex: suplementos proteicos, vitaminas, colágeno, produtos naturais..."
+                style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #ddd",fontSize:13,background:"#fff",color:"#1a1a1a",boxSizing:"border-box"}}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end"}}>
+              <button onClick={saveLead} disabled={savingLead} style={{
+                padding:"6px 14px",borderRadius:7,border:"none",fontSize:12,cursor:"pointer",fontWeight:500,
+                background:leadSaved?"#3B6D11":"#1a1a1a",color:"#fff",transition:"background 0.2s"}}>
+                {savingLead?"A guardar...":leadSaved?"✓ Guardado":"Guardar marcação"}
+              </button>
+            </div>
+          </div>
+
           <div style={S.card}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
               <p style={{fontSize:13,fontWeight:500,margin:0}}>Nota do comercial</p>
