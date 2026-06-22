@@ -373,7 +373,7 @@ function MicrolinkCounter() {
 }
 
 // ── PROFILE PAGE ──────────────────────────────────────────────
-function ProfilePage({CS}) {
+function ProfilePage({CS, companies=[]}) {
   const {user,profile,tenant,role} = useAuth();
   const [usageDetails, setUsageDetails] = useState(null);
   const plan = PLAN_CFG[tenant?.plan||"trial"];
@@ -1376,7 +1376,7 @@ function AppShell() {
       <main style={CS.main}>
         {page==="admin"&&isAdmin&&<AdminPanel/>}
         {page==="settings"&&<SettingsPage/>}
-        {page==="profile"&&<ProfilePage CS={CS}/>}
+        {page==="profile"&&<ProfilePage CS={CS} companies={companies}/>}
         {page==="icp"&&<ICPPage companies={companies} validations={validations} onSelectCompany={setSelectedCompanyId}/>}
         {page==="lists"&&<ListsPage companies={companies} onSelectCompany={setSelectedCompanyId}/>}
         {page==="import"&&<ImportPage CS={CS} handleCSV={handleCSV} addManual={addManual} loading={dataLoading}/>}
