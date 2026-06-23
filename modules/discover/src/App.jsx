@@ -1185,8 +1185,13 @@ function AppShell() {
     await supabase.from("disc_companies").update({status:"enriching"}).eq("id",company.id);
 
     try {
-      // Tenta Microlink (crawl real + extracção HTML) — icpProfile passa competitor_brands
-      const { enrichment: rawEnrichment, signals, _source } = await enrichCompanyReal(company, icpProfile);
+      // Cascata Microlink → Netlify → Scrape.do (planos Pro/Enterprise)
+      // scrapedo_api_key = "enabled" sinaliza à Netlify Function para usar SCRAPEDO_KEY server-side
+      const enrichContext = {
+        ...(icpProfile || {}),
+        scrapedo_api_key: ["pro","enterprise"].includes(tenant?.plan) ? "enabled" : null,
+      };
+      const { enrichment: rawEnrichment, signals, _source } = await enrichCompanyReal(company, enrichContext);
       console.log(`[Revora] Enriquecimento via ${_source} para ${company.name}`, {
         email: rawEnrichment.email, phone: rawEnrichment.phone,
         instagram: rawEnrichment.instagram, competitors: rawEnrichment.competitors_detected,

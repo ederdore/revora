@@ -236,40 +236,40 @@ async function crawlWithMicrolink(url, competitorList = []) {
 
 // ── PROVIDER 2: NETLIFY FUNCTION ──────────────────────────────
 
-async function crawlWithNetlify(url, competitorList = []) {
+async function crawlWithNetlify(url, competitorList = [], useScrapedo = false) {
   const clean = url.startsWith("http") ? url : `https://${url}`;
 
   try {
     const res = await fetch("/.netlify/functions/crawl", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: clean }),
-      signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({ url: clean, useScrapedo }),
+      signal: AbortSignal.timeout(35000),
     });
 
     if (!res.ok) {
-      console.warn("[Netlify] Erro HTTP:", res.status);
+      console.warn("[Netlify/crawl] Erro HTTP:", res.status);
       return null;
     }
 
     const data = await res.json();
     if (!data?.html) {
-      console.warn("[Netlify] HTML vazio para:", url);
+      console.warn("[Netlify/crawl] Sem HTML para:", url, data?.reason || "");
       return null;
     }
 
     const html        = data.html;
+    const provider    = data.provider || "netlify"; // "netlify" ou "scrapedo"
     const extracted   = extractFromHtml(html);
     const competitors = detectCompetitors(html, competitorList);
 
-    // Extrai title e description do HTML
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     const descMatch  = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
                     || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
 
-    console.log(`[Netlify] ✓ ${url}`, { email: extracted.email, phone: extracted.phone, instagram: extracted.instagram });
+    console.log(`[${provider}] ✓ ${url}`, { email: extracted.email, phone: extracted.phone, instagram: extracted.instagram });
 
-    incrementUsage("netlify");
+    incrementUsage(provider === "scrapedo" ? "scrapedo" : "netlify");
     return {
       website_title:    titleMatch?.[1]?.trim() || null,
       meta_description: descMatch?.[1]?.trim()  || null,
@@ -281,12 +281,12 @@ async function crawlWithNetlify(url, competitorList = []) {
       competitors_detected: competitors.detected,
       competitors_count:    competitors.count,
       is_active_reseller:   competitors.is_active_reseller,
-      _source:     "netlify",
+      _source:     provider,
       _crawled_at: new Date().toISOString(),
     };
   } catch (err) {
-    if (err.name === "AbortError") console.warn("[Netlify] Timeout:", url);
-    else console.warn("[Netlify] Erro:", err.message);
+    if (err.name === "AbortError") console.warn("[Netlify/crawl] Timeout:", url);
+    else console.warn("[Netlify/crawl] Erro:", err.message);
     return null;
   }
 }
@@ -369,32 +369,37 @@ export async function crawlWebsite(url, competitorList = [], scrapedoKey = null)
     console.log("[Cascata] Microlink insuficiente → Netlify Function");
   }
 
-  // 2. Netlify Function
-  const nf = await crawlWithNetlify(url, competitorList);
+  // 2. Netlify Function (fetch directo) — se falhar, passa para Scrape.do dentro da mesma função
+  const hasScrapedo = !!scrapedoKey;
+  const nf = await crawlWithNetlify(url, competitorList, false); // tenta fetch directo primeiro
   if (nf) {
     if (hasSufficientData(nf)) {
-      console.log("[Cascata] Early exit no Netlify ✓");
+      console.log(`[Cascata] Early exit no ${nf._source} ✓`);
       return nf;
     }
-    // Tem alguma coisa mas incompleto — tenta Scrape.do se tiver chave
-    if (!scrapedoKey) {
-      console.log("[Cascata] Netlify com dados parciais — sem chave Scrape.do, a usar o que temos");
-      return nf; // retorna o parcial
+    // Dados parciais — tenta Scrape.do se disponível
+    if (hasScrapedo) {
+      console.log("[Cascata] Netlify insuficiente → Scrape.do (via função)");
+      const sd = await crawlWithNetlify(url, competitorList, true);
+      if (sd) {
+        console.log("[Cascata] Early exit no Scrape.do ✓");
+        return sd;
+      }
     }
-    console.log("[Cascata] Netlify insuficiente → Scrape.do");
+    // Sem Scrape.do ou falhou — usa dados parciais do Netlify
+    console.log("[Cascata] A usar dados parciais do Netlify");
+    return nf;
   }
 
-  // 3. Scrape.do
-  if (scrapedoKey) {
-    const sd = await crawlWithScrapedo(url, competitorList, scrapedoKey);
+  // Netlify também falhou — tenta Scrape.do directamente
+  if (hasScrapedo) {
+    console.log("[Cascata] Netlify falhou → Scrape.do");
+    const sd = await crawlWithNetlify(url, competitorList, true);
     if (sd) {
       console.log("[Cascata] Early exit no Scrape.do ✓");
       return sd;
     }
   }
-
-  // Se Netlify teve dados parciais, usa-os
-  if (nf) return nf;
 
   // 4. Sem dados — retorna null (vai para mock)
   return ml?._robots_blocked ? { _robots_blocked: true, _source: "blocked" } : null;
@@ -541,9 +546,9 @@ export async function enrichCompanyMock(company) {
 
 export async function enrichCompanyReal(company, icpProfile = null) {
   const competitorList = icpProfile?.competitor_brands || [];
-  const scrapedoKey   = icpProfile?.scrapedo_api_key  || 
-                        (typeof import.meta !== "undefined" ? import.meta.env?.VITE_SCRAPEDO_KEY : null) ||
-                        null;
+  // scrapedo_api_key vem do icpProfile (passado pelo App.jsx com base no plano do tenant)
+  // A chave real (SCRAPEDO_KEY) fica server-side na Netlify Function — nunca exposta no bundle
+  const scrapedoKey = icpProfile?.scrapedo_api_key || null;
 
   if (company.website) {
     const crawled = await crawlWebsite(company.website, competitorList, scrapedoKey);
