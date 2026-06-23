@@ -160,7 +160,18 @@ export async function crawlWebsite(url, competitorList = []) {
       { signal: AbortSignal.timeout(10000) }
     );
     const data = await res.json();
-    if (data.status !== "success") return null;
+    if (data.status !== "success") {
+      // Detecta bloqueio por robots.txt — retorna flag especial em vez de null
+      const isRobotsBlocked = data.type === "ROBOTS_DISALLOWED"
+        || data.message?.includes("ROBOTS")
+        || data.message?.includes("robots")
+        || data.message?.includes("disallow");
+      if (isRobotsBlocked) {
+        console.warn("[Microlink] Site bloqueia robots.txt:", url);
+        return { _robots_blocked: true, _source: "blocked" };
+      }
+      return null;
+    }
 
     incrementMicrolinkUsage();
 
@@ -368,12 +379,27 @@ export async function enrichCompanyReal(company, icpProfile = null) {
   // Tenta Microlink se tiver URL e disponibilidade
   if (company.website && microlinkStatus.available) {
     const crawled = await crawlWebsite(company.website, competitorList);
+    if (crawled?._robots_blocked) {
+      // Site bloqueia bots — retorna mock com flag robots_blocked
+      const result = await enrichCompanyMock(company);
+      return {
+        ...result,
+        enrichment: {
+          ...result.enrichment,
+          robots_blocked: true,
+          enrichment_status: "done",
+        },
+        _source: "mock",
+        _robots_blocked: true,
+      };
+    }
     if (crawled) {
       const signals = detectSignalsFromCrawl(crawled, company);
       return {
         enrichment: {
           ...crawled,
           enrichment_status: "done",
+          robots_blocked: false,
           contact_page_url: company.website ? `${company.website}/contactos` : null,
         },
         signals,

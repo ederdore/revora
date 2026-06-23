@@ -110,7 +110,9 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
       supabase.from("companies_full").select("*").eq("id", companyId).single(),
       supabase.from("disc_validations").select("*").eq("company_id", companyId).order("created_at", {ascending:false}).limit(1).maybeSingle(),
       supabase.from("disc_validations").select("*").eq("company_id", companyId).order("created_at", {ascending:false}),
-      supabase.from("icp_signals").select("*").eq("tenant_id", tenant?.id).eq("active", true).order("position"),
+      supabase.from("icp_signals").select("*")
+        .eq(icpProfile?.id ? "icp_profile_id" : "tenant_id", icpProfile?.id || tenant?.id)
+        .eq("active", true).order("position"),
       supabase.from("company_icp_signals").select("*").eq("company_id", companyId),
     ]);
     if (co) {
@@ -145,7 +147,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
 
     // disc_companies só tem website — resto vai para disc_enrichment
     await supabase.from("disc_companies").update({
-      website:     contactDraft.website || null,
+      website:     ensureHttps(contactDraft.website) || null,
       data_source: "manual",
       updated_at:  new Date().toISOString(),
     }).eq("id", companyId);
@@ -276,6 +278,14 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
   );
   if (!company) return null;
 
+  // Força https:// em todos os links de website
+  function ensureHttps(url) {
+    if (!url) return null;
+    url = url.trim();
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    return "https://" + url;
+  }
+
   const aiCfg = CLASS_CFG[company.score_class] || {bg:"#f5f5f4",c:"#888"};
   const comCfg = CLASS_CFG[combinedClass || company.score_class] || aiCfg;
   const isEnriching = enrichingId === companyId;
@@ -355,13 +365,24 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
           </button>
         </div>
       )}
-      {company.enrichment_status && company.data_source === "mock" && (
+      {company.enrichment_status && company.data_source === "mock" && !company.robots_blocked && (
         <div style={{background:"#fff8ed",border:"0.5px solid #f0c87a",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:13}}>🟡</span>
           <span style={{fontSize:12,color:"#854F0B",fontWeight:500}}>Dados estimados — crawl real não disponível</span>
           <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching}
             style={{fontSize:11,padding:"3px 10px",borderRadius:6,border:"none",background:"#854F0B",color:"#fff",cursor:"pointer",marginLeft:4}}>
             {isEnriching ? "A tentar..." : "Tentar novamente"}
+          </button>
+        </div>
+      )}
+      {company.enrichment_status && company.robots_blocked && (
+        <div style={{background:"#f5f0ff",border:"0.5px solid #c4b0e8",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:13}}>🤖</span>
+          <span style={{fontSize:12,color:"#534AB7",fontWeight:500}}>Site bloqueia acesso automático (robots.txt)</span>
+          <span style={{fontSize:11,color:"#534AB7",opacity:0.8}}>· Introduz os contactos manualmente ou aguarda integração com Scrape.do</span>
+          <button onClick={() => setEditingContacts(true)}
+            style={{fontSize:11,padding:"3px 10px",borderRadius:6,border:"none",background:"#534AB7",color:"#fff",cursor:"pointer",marginLeft:4}}>
+            ✏ Editar manualmente
           </button>
         </div>
       )}
@@ -438,7 +459,10 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
               /* ── EDITOR DE CONTACTOS ── */
               <div>
                 {[
-                  {k:"website",   l:"Website",   placeholder:"https://www.empresa.pt"},
+                  {k:"website",   l:"Website",   placeholder:"https://www.empresa.pt", onBlur: v => {
+                    const fixed = ensureHttps(v);
+                    if (fixed !== v) setContactDraft(d => ({...d, website: fixed}));
+                  }},
                   {k:"email",     l:"Email",      placeholder:"geral@empresa.pt"},
                   {k:"phone",     l:"Telefone",   placeholder:"+351 21 000 0000"},
                   {k:"whatsapp",  l:"WhatsApp",   placeholder:"https://wa.me/351910000000"},
@@ -452,6 +476,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
                     <input
                       value={contactDraft[f.k] || ""}
                       onChange={e => setContactDraft(d => ({...d, [f.k]: e.target.value}))}
+                      onBlur={f.onBlur ? () => f.onBlur(contactDraft[f.k] || "") : undefined}
                       placeholder={f.placeholder}
                       style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #ddd",fontSize:12,color:"#1a1a1a",background:"#fff",boxSizing:"border-box"}}
                     />
@@ -468,7 +493,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
               /* ── VISUALIZAÇÃO DE CONTACTOS ── */
               <div>
                 {[
-                  {l:"Website",   v:company.website,   href:company.website,                                          color:"#185FA5"},
+                  {l:"Website",   v:company.website,   href:ensureHttps(company.website),                            color:"#185FA5"},
                   {l:"Email",     v:company.email,     href:`mailto:${company.email}`,                                color:"#1a1a1a"},
                   {l:"Telefone",  v:company.phone,     href:`tel:${company.phone}`,                                   color:"#1a1a1a"},
                   {l:"WhatsApp",  v:company.whatsapp,  href:company.whatsapp?.startsWith("http")?company.whatsapp:`https://wa.me/${(company.whatsapp||"").replace(/\D/g,"")}`, color:"#25D366"},
