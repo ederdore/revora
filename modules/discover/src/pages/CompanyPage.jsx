@@ -142,26 +142,32 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
 
   async function saveContacts() {
     setSavingContacts(true);
-    const updates = {
-      website:   contactDraft.website   || null,
-      email:     contactDraft.email     || null,
-      phone:     contactDraft.phone     || null,
-      whatsapp:  contactDraft.whatsapp  || null,
-      instagram: contactDraft.instagram || null,
-      facebook:  contactDraft.facebook  || null,
-      linkedin:  contactDraft.linkedin  || null,
-      tiktok:    contactDraft.tiktok    || null,
+
+    // disc_companies só tem website — resto vai para disc_enrichment
+    await supabase.from("disc_companies").update({
+      website:     contactDraft.website || null,
       data_source: "manual",
-    };
-    await supabase.from("disc_companies").update(updates).eq("id", companyId);
-    // Also update enrichment table
-    await supabase.from("disc_enrichment").upsert({
-      company_id: companyId,
-      tenant_id:  tenant?.id,
-      ...updates,
-      enrichment_status: "done",
-      _source: "manual",
+      updated_at:  new Date().toISOString(),
+    }).eq("id", companyId);
+
+    // Contactos ficam em disc_enrichment
+    const { error } = await supabase.from("disc_enrichment").upsert({
+      company_id:            companyId,
+      tenant_id:             tenant?.id,
+      email:                 contactDraft.email     || null,
+      phone:                 contactDraft.phone     || null,
+      whatsapp:              contactDraft.whatsapp  || null,
+      instagram:             contactDraft.instagram || null,
+      facebook:              contactDraft.facebook  || null,
+      linkedin:              contactDraft.linkedin  || null,
+      tiktok:                contactDraft.tiktok    || null,
+      enrichment_status:     "done",
+      data_source:           "manual",
+      enrichment_updated_at: new Date().toISOString(),
     }, { onConflict: "company_id" });
+
+    if (error) console.error("[saveContacts] disc_enrichment error:", error.message);
+
     setSavingContacts(false);
     setContactSaved(true);
     setEditingContacts(false);
