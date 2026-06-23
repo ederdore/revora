@@ -5,24 +5,26 @@ import { useAuth } from "../AuthContext.jsx";
 import { LEAD_TYPES, LEAD_STATUSES } from "./ListsPage.jsx";
 
 const SOURCE_CFG = {
-  microlink:   { l:"Microlink",   icon:"🔗", c:"#185FA5", bg:"#E6F1FB", desc:"Crawl real do site" },
-  google_maps: { l:"Google Maps", icon:"🗺",  c:"#3B6D11", bg:"#EAF3DE", desc:"Google Maps API" },
-  semrush:     { l:"SEMrush",     icon:"📊", c:"#534AB7", bg:"#EEEDFE", desc:"SEMrush API" },
-  outscraper:  { l:"Outscraper",  icon:"⚙",  c:"#854F0B", bg:"#FAEEDA", desc:"Outscraper API" },
-  manual:      { l:"Manual",      icon:"✏",  c:"#888",    bg:"#f5f5f4", desc:"Introduzido manualmente" },
-  csv:         { l:"CSV",         icon:"📂", c:"#888",    bg:"#f5f5f4", desc:"Importado via CSV" },
-  mock:        { l:"Estimado",    icon:"⚠",  c:"#854F0B", bg:"#FAEEDA", desc:"Dados estimados — sem crawl real" },
+  microlink:   { l:"Microlink",  icon:"🔗", c:"#185FA5", bg:"#E6F1FB", desc:"Crawl real via Microlink API" },
+  netlify:     { l:"Fetch",      icon:"⚡", c:"#3B6D11", bg:"#EAF3DE", desc:"Fetch directo server-side" },
+  scrapedo:    { l:"Scrape.do",  icon:"🕷", c:"#534AB7", bg:"#EEEDFE", desc:"Browser headless via Scrape.do" },
+  google_maps: { l:"Google Maps",icon:"🗺",  c:"#3B6D11", bg:"#EAF3DE", desc:"Google Maps API" },
+  outscraper:  { l:"Outscraper", icon:"⚙",  c:"#854F0B", bg:"#FAEEDA", desc:"Outscraper API" },
+  hunter:      { l:"Hunter.io",  icon:"🎯", c:"#185FA5", bg:"#E6F1FB", desc:"Hunter.io email finder" },
+  manual:      { l:"Manual",     icon:"✏",  c:"#888",    bg:"#f5f5f4", desc:"Introduzido manualmente" },
+  csv:         { l:"CSV",        icon:"📂", c:"#888",    bg:"#f5f5f4", desc:"Importado via CSV" },
+  mock:        { l:"Estimado",   icon:"⚠",  c:"#854F0B", bg:"#FAEEDA", desc:"Dados estimados por categoria" },
 };
 
 function SourceBadge({ source }) {
   const cfg = SOURCE_CFG[source] || SOURCE_CFG.mock;
   return (
     <span title={cfg.desc} style={{
-      display:"inline-flex", alignItems:"center", gap:4,
-      fontSize:11, background:cfg.bg, color:cfg.c,
-      padding:"3px 8px", borderRadius:5, fontWeight:500,
+      display:"inline-flex", alignItems:"center", gap:3,
+      fontSize:10, background:cfg.bg, color:cfg.c,
+      padding:"2px 6px", borderRadius:4, fontWeight:500,
     }}>
-      {cfg.icon} {cfg.l} — {cfg.desc}
+      {cfg.icon} {cfg.l}
     </span>
   );
 }
@@ -335,48 +337,87 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
               )}
             </>
           )}
-          <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching} style={{...S.btn,fontSize:12}} title="Reenriquecer">
-            {isEnriching ? "⏳" : "↺"}
-          </button>
+
         </div>
       </div>
 
-      {/* Enrichment status tag */}
-      {!company.enrichment_status && (
-        <div style={{background:"#FAEEDA",border:"0.5px solid #f0c87a",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:13}}>⚠️</span>
-          <span style={{fontSize:12,color:"#854F0B",fontWeight:500}}>Enriquecimento pendente</span>
+      {/* ── BARRA DE TAGS ── */}
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:16}}>
+
+        {/* ICP + Classe */}
+        {icpProfile && (
+          <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,background:"#EEEDFE",color:"#534AB7",padding:"3px 8px",borderRadius:5,fontWeight:500}}>
+            🎯 {icpProfile.name}
+            {(() => {
+              const cls = combinedClass || company.combined_class || company.score_class;
+              const cfg = CLASS_CFG[cls] || {bg:"#f5f5f4",c:"#888"};
+              return cls ? <span style={{marginLeft:4,background:cfg.bg,color:cfg.c,padding:"1px 5px",borderRadius:3,fontWeight:600}}>Classe {cls}</span> : null;
+            })()}
+          </span>
+        )}
+
+        {/* Lead type */}
+        {(() => {
+          const t = LEAD_TYPES.find(t=>t.v===(company.lead_type||"lead")) || LEAD_TYPES[0];
+          return <span style={{fontSize:11,background:t.bg,color:t.c,padding:"3px 8px",borderRadius:5,fontWeight:500}}>{t.icon} {t.l}</span>;
+        })()}
+
+        {/* Lead status */}
+        {(() => {
+          const s = LEAD_STATUSES.find(s=>s.v===(company.lead_status||"not_contacted")) || LEAD_STATUSES[0];
+          return <span style={{fontSize:11,color:s.c,fontWeight:500,padding:"3px 8px",borderRadius:5,background:s.c+"15",border:`0.5px solid ${s.c}30`}}>{s.l}</span>;
+        })()}
+
+        {/* Crawler source */}
+        {company.enrichment_status && <SourceBadge source={company.data_source||"mock"}/>}
+
+        {/* Data stale badge — +30 dias sem actualização */}
+        {company.enrichment_updated_at && (() => {
+          const days = Math.floor((Date.now() - new Date(company.enrichment_updated_at)) / 86400000);
+          if (days < 7) return null;
+          const c = days >= 30 ? "#A32D2D" : "#854F0B";
+          const bg = days >= 30 ? "#FCEBEB" : "#FAEEDA";
+          return <span style={{fontSize:10,background:bg,color:c,padding:"3px 8px",borderRadius:5,fontWeight:500}}>⏱ {days}d sem actualização</span>;
+        })()}
+
+        {/* Robots blocked */}
+        {company.robots_blocked && (
+          <span style={{fontSize:10,background:"#f5f0ff",color:"#534AB7",padding:"3px 8px",borderRadius:5,fontWeight:500}}>🤖 Bloqueado por robots.txt</span>
+        )}
+
+        {/* Validação comercial */}
+        {validation && (() => {
+          const r = RATINGS.find(x=>x.v===validation);
+          return r ? <span style={{fontSize:10,color:r.c,fontWeight:500,padding:"3px 8px",borderRadius:5,background:r.c+"15"}}>{r.l}</span> : null;
+        })()}
+
+        {/* Botão editar contactos */}
+        <button onClick={() => { setTab("overview"); setEditingContacts(true); }} style={{fontSize:11,padding:"3px 10px",borderRadius:5,border:"0.5px solid #ddd",background:"#fff",color:"#888",cursor:"pointer",marginLeft:"auto"}}>
+          ✏ Editar contactos
+        </button>
+        <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching}
+          style={{fontSize:11,padding:"3px 10px",borderRadius:5,border:"0.5px solid #ddd",background:isEnriching?"#f5f5f4":"#fff",color:"#888",cursor:isEnriching?"wait":"pointer"}}>
+          {isEnriching ? "⏳" : "↺ Reenriquecer"}
+        </button>
+      </div>
+
+      {/* Aviso de dados estimados */}
+      {company.enrichment_status && (company.data_source === "mock" || !company.data_source) && (
+        <div style={{background:"#fff8ed",border:"0.5px solid #f0c87a",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:12,color:"#854F0B",fontWeight:500}}>⚠ Dados estimados por categoria — crawl real não disponível</span>
           <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching}
-            style={{fontSize:11,padding:"3px 10px",borderRadius:6,border:"none",background:"#854F0B",color:"#fff",cursor:"pointer",marginLeft:4}}>
-            {isEnriching ? "A analisar..." : "Enriquecer agora"}
-          </button>
-        </div>
-      )}
-      {company.enrichment_status && company.data_source === "mock" && (
-        <div style={{background:"#fff8ed",border:"0.5px solid #f0c87a",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:13}}>🟡</span>
-          <span style={{fontSize:12,color:"#854F0B",fontWeight:500}}>Dados estimados — crawl real não disponível</span>
-          <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching}
-            style={{fontSize:11,padding:"3px 10px",borderRadius:6,border:"none",background:"#854F0B",color:"#fff",cursor:"pointer",marginLeft:4}}>
+            style={{fontSize:11,padding:"3px 10px",borderRadius:6,border:"none",background:"#854F0B",color:"#fff",cursor:"pointer",marginLeft:"auto"}}>
             {isEnriching ? "A tentar..." : "Tentar novamente"}
           </button>
         </div>
       )}
-      {company.enrichment_status && company.data_source === "microlink" && (
-        <div style={{background:"#EAF3DE",border:"0.5px solid #b5d9a0",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:13}}>✅</span>
-          <span style={{fontSize:12,color:"#3B6D11",fontWeight:500}}>Enriquecido via Microlink</span>
-          {company.enrichment_updated_at && (
-            <span style={{fontSize:11,color:"#3B6D11",opacity:0.7}}>
-              · {new Date(company.enrichment_updated_at).toLocaleDateString("pt-PT")}
-            </span>
-          )}
-        </div>
-      )}
-      {company.enrichment_status && company.data_source === "manual" && (
-        <div style={{background:"#f5f5f4",border:"0.5px solid #e0e0e0",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:13}}>✏️</span>
-          <span style={{fontSize:12,color:"#888",fontWeight:500}}>Dados introduzidos manualmente</span>
+      {!company.enrichment_status && (
+        <div style={{background:"#FAEEDA",border:"0.5px solid #f0c87a",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:12,color:"#854F0B",fontWeight:500}}>⚠️ Empresa ainda não enriquecida</span>
+          <button onClick={() => onEnrich(company, icpProfile)} disabled={isEnriching}
+            style={{fontSize:11,padding:"3px 10px",borderRadius:6,border:"none",background:"#854F0B",color:"#fff",cursor:"pointer",marginLeft:"auto"}}>
+            {isEnriching ? "A analisar..." : "Enriquecer agora"}
+          </button>
         </div>
       )}
 
@@ -449,13 +490,12 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
                   const s = LEAD_STATUSES.find(s=>s.v===(company.lead_status||"not_contacted")) || LEAD_STATUSES[0];
                   return <span style={{fontSize:11,color:s.c,fontWeight:500,padding:"2px 6px",borderRadius:4,background:s.c+"15"}}>{s.l}</span>;
                 })()}
-                {company.enrichment_status && <SourceBadge source={company.data_source||"mock"}/>}
                 <button onClick={() => setEditingContacts(e => !e)} style={{
-                  fontSize:11,padding:"3px 10px",borderRadius:6,
+                  fontSize:11,padding:"3px 8px",borderRadius:5,
                   border:"0.5px solid #ddd",background:editingContacts?"#1a1a1a":"#fff",
                   color:editingContacts?"#fff":"#888",cursor:"pointer",
                 }}>
-                  {editingContacts ? "✕ Fechar" : "✏ Editar"}
+                  {editingContacts ? "✕" : "✏"}
                 </button>
               </div>
             </div>
@@ -541,6 +581,24 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
                 <ScoreBar label="Authority"               value={company.authority_score} color="#185FA5" weight={weights.authority}/>
                 <ScoreBar label="Presença digital"       value={company.digital_score}   color="#1D9E75" weight={weights.digital}/>
                 <ScoreBar label="Facilidade de contacto" value={company.contact_score}   color="#E8A020" weight={weights.contact}/>
+                {/* Bónus concorrentes */}
+                {(company.competitors_count > 0 || company.is_active_reseller) && (
+                  <div style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                      <span style={{color:"#534AB7"}}>🏪 Vende concorrentes</span>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <span style={{fontSize:10,color:"#ccc"}}>{company.is_active_reseller?"revendedor activo":"detectado"}</span>
+                        <span style={{fontWeight:600,color:"#534AB7",minWidth:24,textAlign:"right"}}>+{company.is_active_reseller?15:8}</span>
+                      </div>
+                    </div>
+                    <div style={{height:5,borderRadius:5,background:"#f0f0f0",overflow:"hidden"}}>
+                      <div style={{height:"100%",borderRadius:5,width:`${company.is_active_reseller?15:8}%`,background:"#534AB7"}}/>
+                    </div>
+                    {company.competitors_detected?.length > 0 && (
+                      <p style={{fontSize:10,color:"#888",margin:"3px 0 0"}}>{company.competitors_detected.join(", ")}</p>
+                    )}
+                  </div>
+                )}
                 <div style={{marginTop:12,paddingTop:12,borderTop:"0.5px solid #f0f0f0"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                     <span style={{fontSize:12,color:"#888"}}>Score IA</span>
