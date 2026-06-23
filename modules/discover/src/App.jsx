@@ -1057,6 +1057,7 @@ function AppShell() {
   const {user,profile,tenant,role,isAdmin,signOut,logEvent,loading,impersonating,exitTenant,enterTenant}=useAuth();
   const [page,setPage]=useState("import");
   const [companies,setCompanies]=useState([]);
+  const [icpProfile,setIcpProfile]=useState(null);
   const [dataLoading,setDataLoading]=useState(false);
   const [enrichingId,setEnrichingId]=useState(null);
   const [filterClass,setFilterClass]=useState("all");
@@ -1070,9 +1071,13 @@ function AppShell() {
   const loadCompanies=useCallback(async()=>{
     const t = tenant || impersonating?.tenant;
     if(!t)return;setDataLoading(true);
-    // Load companies - order by combined_score first, then final_score
-    const{data}=await supabase.from("companies_full").select("*").eq("tenant_id",t.id).order("combined_score",{ascending:false,nullsFirst:false}).order("final_score",{ascending:false,nullsFirst:false});
+    // Load companies + ICP profile in parallel
+    const[{data},{data:icp}]=await Promise.all([
+      supabase.from("companies_full").select("*").eq("tenant_id",t.id).order("combined_score",{ascending:false,nullsFirst:false}).order("final_score",{ascending:false,nullsFirst:false}),
+      supabase.from("disc_icp_profiles").select("*").eq("tenant_id",t.id).eq("is_active",true).eq("is_default",true).maybeSingle(),
+    ]);
     setCompanies(data||[]);
+    if(icp) setIcpProfile(icp);
 
     // Load all validations from DB (bug 4 fix)
     const{data:vals}=await supabase.from("disc_validations")
@@ -1137,6 +1142,7 @@ function AppShell() {
           onBack={()=>{setSelectedCompanyId(null);loadCompanies();}}
           onEnrich={enrichCompany}
           enrichingId={enrichingId}
+          icpProfile={icpProfile}
         />
       </main>
     </div>
@@ -1163,7 +1169,7 @@ function AppShell() {
     else{await logEvent("company.imported","company",null,{name,source:"manual"});showToast("Empresa adicionada!","success");await loadCompanies();}
   }
 
-  async function enrichCompany(company) {
+  async function enrichCompany(company, icpProfile = null) {
     if(enrichingId===company.id)return;
     if(!tenant?.id){showToast("Workspace não carregado. Tente novamente.","error");return;}
     setEnrichingId(company.id);
@@ -1179,22 +1185,32 @@ function AppShell() {
     await supabase.from("disc_companies").update({status:"enriching"}).eq("id",company.id);
 
     try {
-      // Tenta Microlink (crawl real) — fallback para mock se limite atingido ou sem URL
-      const { enrichment: rawEnrichment, signals, _source } = await enrichCompanyReal(company);
-      console.log(`[Revora] Enriquecimento via ${_source} para ${company.name}`);
+      // Tenta Microlink (crawl real + extracção HTML) — icpProfile passa competitor_brands
+      const { enrichment: rawEnrichment, signals, _source } = await enrichCompanyReal(company, icpProfile);
+      console.log(`[Revora] Enriquecimento via ${_source} para ${company.name}`, {
+        email: rawEnrichment.email, phone: rawEnrichment.phone,
+        instagram: rawEnrichment.instagram, competitors: rawEnrichment.competitors_detected,
+      });
 
       // RGPD: filtra emails pessoais, marca fonte pública, define retenção
       const enrichment = rgpdFilter({ ...rawEnrichment, tenant_id:tenant.id, company_id:company.id });
 
-      // Add source tracking to enrichment
+      // Add source tracking + competitor data + timestamp
       const enrichmentWithSource = {
         ...enrichment,
-        data_source: _source || "mock",
+        data_source:           _source || "mock",
+        competitors_detected:  rawEnrichment.competitors_detected || [],
+        competitors_count:     rawEnrichment.competitors_count    || 0,
+        is_active_reseller:    rawEnrichment.is_active_reseller   || false,
+        enrichment_updated_at: new Date().toISOString(),
       };
       await supabase.from("disc_enrichment").upsert(enrichmentWithSource, {onConflict:"company_id"});
 
-      // Scoring com keywords do tenant
-      const scores = computeScores(enrichment, tenant);
+      // Actualiza data_source na empresa principal
+      await supabase.from("disc_companies").update({ data_source: _source || "mock" }).eq("id", company.id);
+
+      // Scoring com keywords do tenant + signals (inclui bónus concorrentes)
+      const scores = computeScores(enrichment, signals, tenant);
       const { error: scoringErr } = await supabase.from("disc_scoring").upsert({
         tenant_id:      tenant.id,
         company_id:     company.id,
