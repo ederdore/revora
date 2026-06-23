@@ -1066,6 +1066,7 @@ function AppShell() {
   const [selectedCompanyId,setSelectedCompanyId]=useState(null);
   const [selectedIds,setSelectedIds]=useState(new Set());
   const [toast,setToast]=useState(null);
+  const [enrichProgress,setEnrichProgress]=useState(null); // {step,label,source,done,error}
   const showToast=(text,type="info")=>setToast({text,type});
 
   const loadCompanies=useCallback(async()=>{
@@ -1143,6 +1144,7 @@ function AppShell() {
           onEnrich={enrichCompany}
           enrichingId={enrichingId}
           icpProfile={icpProfile}
+          enrichProgress={enrichProgress}
         />
       </main>
     </div>
@@ -1173,11 +1175,13 @@ function AppShell() {
     if(enrichingId===company.id)return;
     if(!tenant?.id){showToast("Workspace não carregado. Tente novamente.","error");return;}
     setEnrichingId(company.id);
+    const prog = (step, label, extra={}) => setEnrichProgress({step, label, companyId:company.id, ...extra});
 
     // Verifica limite de uso antes de avançar
     const usage = await canSearch(tenant.id);
     if (usage.usage_status === "blocked") {
       setEnrichingId(null);
+      setEnrichProgress(null);
       showToast("Limite de pesquisas atingido. Upload CSV disponível ou aguarda o próximo ciclo.", "warning");
       return;
     }
@@ -1185,8 +1189,18 @@ function AppShell() {
     await supabase.from("disc_companies").update({status:"enriching"}).eq("id",company.id);
 
     try {
-      // Tenta Microlink (crawl real + extracção HTML) — icpProfile passa competitor_brands
+      // Step 1 — Crawl
+      prog(1, "🔍 A analisar o site...");
       const { enrichment: rawEnrichment, signals, _source } = await enrichCompanyReal(company, icpProfile);
+
+      const isRobotsBlocked = rawEnrichment.robots_blocked || _source === "blocked";
+      const crawlLabel = isRobotsBlocked
+        ? "🤖 Site bloqueia acesso automático"
+        : _source === "microlink"
+          ? `✅ Site analisado — ${[rawEnrichment.email?"email":"", rawEnrichment.phone?"telefone":"", rawEnrichment.instagram?"instagram":""].filter(Boolean).join(", ")||"sem contactos encontrados"}`
+          : "⚠️ Sem site ou crawl indisponível — dados estimados";
+      prog(1, crawlLabel, { source: _source, done: true, robots: isRobotsBlocked });
+
       console.log(`[Revora] Enriquecimento via ${_source} para ${company.name}`, {
         email: rawEnrichment.email, phone: rawEnrichment.phone,
         instagram: rawEnrichment.instagram, competitors: rawEnrichment.competitors_detected,
@@ -1199,6 +1213,7 @@ function AppShell() {
       const enrichmentWithSource = {
         ...enrichment,
         data_source:           _source || "mock",
+        robots_blocked:        isRobotsBlocked,
         competitors_detected:  rawEnrichment.competitors_detected || [],
         competitors_count:     rawEnrichment.competitors_count    || 0,
         is_active_reseller:    rawEnrichment.is_active_reseller   || false,
@@ -1209,7 +1224,8 @@ function AppShell() {
       // Actualiza data_source na empresa principal
       await supabase.from("disc_companies").update({ data_source: _source || "mock" }).eq("id", company.id);
 
-      // Scoring com keywords do tenant + signals (inclui bónus concorrentes)
+      // Step 2 — Scoring
+      prog(2, "📊 A calcular score...");
       const scores = computeScores(enrichment, signals, tenant);
       const { error: scoringErr } = await supabase.from("disc_scoring").upsert({
         tenant_id:      tenant.id,
@@ -1223,29 +1239,37 @@ function AppShell() {
         model_version:  1,
       },{onConflict:"company_id"});
       if(scoringErr) console.error("[Revora] disc_scoring error:", scoringErr.message);
+      prog(2, `📊 Score calculado — ${scores.finalScore} (Classe ${scores.scoreClass})`, {done:true});
 
       // Sinais detectados
       await supabase.from("disc_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
 
-      // Tenta análise IA via Netlify Function
-      // Se falhar (sem key configurada no servidor), usa mock
+      // Step 3 — IA
+      prog(3, "🤖 A gerar análise IA...");
       let ai;
       try {
         ai = await callClaudeAI(company, enrichment, tenant);
         if (!ai.executive_summary || ai.confidence_score === 0) throw new Error("fallback");
+        prog(3, `🤖 Análise IA concluída — potencial ${ai.partnership_potential}`, {done:true});
       } catch {
         ai = await analyzeCompanyMock(company, enrichment, tenant);
+        prog(3, "🤖 Análise IA estimada (sem chave configurada)", {done:true, mock:true});
       }
       await supabase.from("disc_ai_analysis").upsert({tenant_id:tenant.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
 
       const { error: statusErr } = await supabase.from("disc_companies").update({status:"scored"}).eq("id",company.id);
       if(statusErr) console.error("[Revora] status update error:", statusErr.message);
       await logEvent("company.enriched","company",company.id,{score:scores.finalScore,class:scores.scoreClass});
-      // Regista uso para controlo de limites e custos reais
       await logUsage(tenant.id, "microlink", company.id);
       await logUsage(tenant.id, "ai_analysis", company.id, 800, 300);
+
+      // Step 4 — Concluído
+      prog(4, `✅ Concluído · Score ${scores.finalScore} · Classe ${scores.scoreClass}`, {done:true, final:true});
+      setTimeout(() => setEnrichProgress(null), 4000);
       showToast(`${company.name} · Score ${scores.finalScore} (Classe ${scores.scoreClass})`,"success");
     } catch(err) {
+      prog(0, `❌ Erro: ${err.message}`, {error:true});
+      setTimeout(() => setEnrichProgress(null), 5000);
       await supabase.from("disc_companies").update({status:"new"}).eq("id",company.id);
       showToast(`Erro ao enriquecer ${company.name}: ${err.message}`,"error");
     } finally {

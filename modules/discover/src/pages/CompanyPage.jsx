@@ -68,7 +68,7 @@ function ScorePill({label, value, color, bg, size="normal"}) {
   );
 }
 
-export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, icpProfile}) {
+export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, icpProfile, enrichProgress}) {
   const {user, tenant, logEvent} = useAuth();
   const [company, setCompany]   = useState(null);
   const [loading, setLoading]   = useState(true);
@@ -401,6 +401,53 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
         <div style={{background:"#f5f5f4",border:"0.5px solid #e0e0e0",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:13}}>✏️</span>
           <span style={{fontSize:12,color:"#888",fontWeight:500}}>Dados introduzidos manualmente</span>
+        </div>
+      )}
+
+      {/* ── PAINEL DE PROGRESSO ── */}
+      {isEnriching && (
+        <div style={{background:"#fff",border:"0.5px solid #e5e5e5",borderRadius:10,padding:"16px 20px",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+            <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid #185FA5",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+            <span style={{fontSize:13,fontWeight:500,color:"#1a1a1a"}}>A enriquecer empresa...</span>
+          </div>
+          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+          {/* Steps */}
+          {[
+            {n:1, l:"Crawl do site"},
+            {n:2, l:"Scoring"},
+            {n:3, l:"Análise IA"},
+            {n:4, l:"Concluído"},
+          ].map(s => {
+            const isCurrent = enrichProgress?.step === s.n;
+            const isDone    = enrichProgress?.step > s.n || (enrichProgress?.step === s.n && enrichProgress?.done);
+            const isError   = enrichProgress?.error && enrichProgress?.step === s.n;
+            return (
+              <div key={s.n} style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:8}}>
+                <div style={{
+                  width:20,height:20,borderRadius:"50%",flexShrink:0,marginTop:1,
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,
+                  background: isError?"#FCEBEB": isDone?"#EAF3DE": isCurrent?"#E6F1FB":"#f5f5f4",
+                  color:      isError?"#A32D2D": isDone?"#3B6D11": isCurrent?"#185FA5":"#ccc",
+                  border:     isCurrent&&!isDone?"1.5px solid #185FA5":"none",
+                }}>
+                  {isError?"✕": isDone?"✓": isCurrent?
+                    <div style={{width:8,height:8,borderRadius:"50%",border:"1.5px solid #185FA5",borderTopColor:"transparent",animation:"spin 0.8s linear infinite"}}/>
+                  : s.n}
+                </div>
+                <div style={{flex:1}}>
+                  <span style={{
+                    fontSize:12,
+                    color: isError?"#A32D2D": isDone?"#3B6D11": isCurrent?"#185FA5":"#ccc",
+                    fontWeight: isCurrent||isDone ? 500 : 400,
+                  }}>
+                    {isCurrent && enrichProgress?.label ? enrichProgress.label : s.l}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
