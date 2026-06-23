@@ -155,10 +155,17 @@ export async function crawlWebsite(url, competitorList = []) {
     const clean = url.startsWith("http") ? url : `https://${url}`;
 
     // Pede meta + HTML completo numa única request
-    const res = await fetch(
-      `https://api.microlink.io?url=${encodeURIComponent(clean)}&meta=true&screenshot=false&html=true`,
-      { signal: AbortSignal.timeout(10000) }
-    );
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    let res;
+    try {
+      res = await fetch(
+        `https://api.microlink.io?url=${encodeURIComponent(clean)}&meta=true&screenshot=false&html=true`,
+        { signal: controller.signal }
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
     // Microlink pode retornar erro como JSON ou como texto
     let data;
     try { data = await res.json(); } catch { return null; }
@@ -227,7 +234,11 @@ export async function crawlWebsite(url, competitorList = []) {
       _all_phones:    extracted._all_phones,
     };
   } catch (err) {
-    console.warn("[Microlink] Erro no crawl:", err.message);
+    if (err.name === "AbortError" || err.message?.includes("abort") || err.message?.includes("timeout")) {
+      console.warn("[Microlink] Timeout no crawl:", url);
+    } else {
+      console.warn("[Microlink] Erro no crawl:", err.message);
+    }
     return null;
   }
 }
