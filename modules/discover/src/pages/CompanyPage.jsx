@@ -5,12 +5,10 @@ import { useAuth } from "../AuthContext.jsx";
 import { LEAD_TYPES, LEAD_STATUSES } from "./ListsPage.jsx";
 
 const SOURCE_CFG = {
-  microlink:   { l:"Microlink",   icon:"🔗", c:"#185FA5", bg:"#E6F1FB", desc:"Crawl real via Microlink API" },
-  netlify:     { l:"Fetch",       icon:"⚡", c:"#3B6D11", bg:"#EAF3DE", desc:"Fetch directo server-side (Netlify)" },
-  scrapedo:    { l:"Scrape.do",   icon:"🕷", c:"#534AB7", bg:"#EEEDFE", desc:"Browser headless via Scrape.do" },
+  microlink:   { l:"Microlink",   icon:"🔗", c:"#185FA5", bg:"#E6F1FB", desc:"Crawl real do site" },
   google_maps: { l:"Google Maps", icon:"🗺",  c:"#3B6D11", bg:"#EAF3DE", desc:"Google Maps API" },
+  semrush:     { l:"SEMrush",     icon:"📊", c:"#534AB7", bg:"#EEEDFE", desc:"SEMrush API" },
   outscraper:  { l:"Outscraper",  icon:"⚙",  c:"#854F0B", bg:"#FAEEDA", desc:"Outscraper API" },
-  hunter:      { l:"Hunter.io",   icon:"🎯", c:"#185FA5", bg:"#E6F1FB", desc:"Hunter.io email finder" },
   manual:      { l:"Manual",      icon:"✏",  c:"#888",    bg:"#f5f5f4", desc:"Introduzido manualmente" },
   csv:         { l:"CSV",         icon:"📂", c:"#888",    bg:"#f5f5f4", desc:"Importado via CSV" },
   mock:        { l:"Estimado",    icon:"⚠",  c:"#854F0B", bg:"#FAEEDA", desc:"Dados estimados — sem crawl real" },
@@ -70,8 +68,9 @@ function ScorePill({label, value, color, bg, size="normal"}) {
   );
 }
 
-export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, icpProfile}) {
-  const {user, tenant, logEvent} = useAuth();
+export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, icpProfile, enrichProgress}) {
+  const {user, tenant, impersonating, logEvent} = useAuth();
+  const effectiveTenant = tenant || impersonating?.tenant;
   const [company, setCompany]   = useState(null);
   const [loading, setLoading]   = useState(true);
   const [tab, setTab]           = useState("overview");
@@ -112,7 +111,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
       supabase.from("companies_full").select("*").eq("id", companyId).single(),
       supabase.from("disc_validations").select("*").eq("company_id", companyId).order("created_at", {ascending:false}).limit(1).maybeSingle(),
       supabase.from("disc_validations").select("*").eq("company_id", companyId).order("created_at", {ascending:false}),
-      supabase.from("icp_signals").select("*").eq("tenant_id", tenant?.id).eq("active", true).order("position"),
+      supabase.from("icp_signals").select("*").eq("tenant_id", effectiveTenant?.id || tenant?.id).eq("active", true).order("position"),
       supabase.from("company_icp_signals").select("*").eq("company_id", companyId),
     ]);
     if (co) {
@@ -155,7 +154,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
     // Contactos ficam em disc_enrichment
     const { error } = await supabase.from("disc_enrichment").upsert({
       company_id:            companyId,
-      tenant_id:             tenant?.id,
+      tenant_id:             effectiveTenant?.id,
       email:                 contactDraft.email     || null,
       phone:                 contactDraft.phone     || null,
       whatsapp:              contactDraft.whatsapp  || null,
@@ -196,7 +195,8 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
   }
 
   async function submitValidation(rating) {
-    // Calcula score humano baseado no rating + sinais ICP marcados
+    if (!effectiveTenant?.id) { console.error("Tenant não carregado"); return; }
+
     const ratingBase = { excellent:100, good:75, neutral:50, bad:20, review_later:50 }[rating] || 50;
     let adjustment = 0;
     let totalWeight = 0;
@@ -211,44 +211,39 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
     const normalized = totalWeight > 0 ? adjustment / totalWeight : 0;
     const newHumanScore = Math.min(100, Math.max(0, Math.round(ratingBase + normalized)));
 
-    // Calcula score combinado
-    const wIA    = Number(tenant?.weight_ia    || 0.70);
-    const wHuman = Number(tenant?.weight_human || 0.30);
-    const phase  = tenant?.scoring_phase || 1;
+    const wIA    = Number(effectiveTenant?.weight_ia    || 0.70);
+    const wHuman = Number(effectiveTenant?.weight_human || 0.30);
+    const phase  = effectiveTenant?.scoring_phase || 1;
     const aiScore = company.final_score || 0;
     const combined = phase === 1
       ? aiScore
       : Math.min(100, Math.max(0, Math.round(aiScore * wIA + newHumanScore * wHuman)));
     const combinedCls = combined >= 80 ? "A" : combined >= 60 ? "B" : combined >= 40 ? "C" : "D";
 
-    // 1. Guarda validação
-    const { error: e1 } = await supabase.from("disc_validations").insert({
-      tenant_id: tenant.id, company_id: companyId,
-      reviewer_id: user.id, ai_score: aiScore, human_rating: rating,
-    });
-    if (e1) { console.error("disc_validations error:", e1); return; }
-
-    // 2. Guarda score humano
-    const { error: e2 } = await supabase.from("company_human_score").upsert({
-      tenant_id: tenant.id, company_id: companyId,
-      reviewer_id: user.id, score: newHumanScore,
-    }, { onConflict: "company_id" });
-    if (e2) console.error("company_human_score error:", e2);
-
-    // 3. Actualiza disc_scoring com score combinado
-    const { error: e3 } = await supabase.from("disc_scoring")
-      .update({ human_score: newHumanScore, combined_score: combined, combined_class: combinedCls, scoring_phase: phase })
-      .eq("company_id", companyId);
-    if (e3) console.error("disc_scoring update error:", e3);
-
-    // Actualiza estado local imediatamente
+    // Optimistic update — actualiza UI antes de esperar o Supabase
     setValidation(rating);
     setHumanScore(newHumanScore);
     setCombinedScore(combined);
     setCombinedClass(combinedCls);
 
+    const { error: e1 } = await supabase.from("disc_validations").insert({
+      tenant_id: effectiveTenant.id, company_id: companyId,
+      reviewer_id: user.id, ai_score: aiScore, human_rating: rating,
+    });
+    if (e1) { console.error("disc_validations error:", e1.message); return; }
+
+    const { error: e2 } = await supabase.from("company_human_score").upsert({
+      tenant_id: effectiveTenant.id, company_id: companyId,
+      reviewer_id: user.id, score: newHumanScore,
+    }, { onConflict: "company_id" });
+    if (e2) console.error("company_human_score error:", e2.message);
+
+    const { error: e3 } = await supabase.from("disc_scoring")
+      .update({ human_score: newHumanScore, combined_score: combined, combined_class: combinedCls, scoring_phase: phase })
+      .eq("company_id", companyId);
+    if (e3) console.error("disc_scoring update error:", e3.message);
+
     await logEvent("validation.submitted", "company", companyId, { rating, human_score: newHumanScore, combined });
-    loadAll();
   }
 
   async function toggleSignal(signal) {
@@ -261,7 +256,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
         .eq("signal_id", signal.id);
     } else {
       await supabase.from("company_icp_signals").insert({
-        tenant_id: tenant.id, company_id: companyId,
+        tenant_id: effectiveTenant.id, company_id: companyId,
         signal_id: signal.id, marked_by: user.id,
       });
     }
@@ -281,14 +276,14 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
   const aiCfg = CLASS_CFG[company.score_class] || {bg:"#f5f5f4",c:"#888"};
   const comCfg = CLASS_CFG[combinedClass || company.score_class] || aiCfg;
   const isEnriching = enrichingId === companyId;
-  const phase = tenant?.scoring_phase || 1;
+  const phase = effectiveTenant?.scoring_phase || 1;
   const positiveSignals = icpSignals.filter(s => s.signal_type === "positive");
   const negativeSignals = icpSignals.filter(s => s.signal_type === "negative");
   const weights = {
-    fit:       tenant?.score_weight_fit       || 0.35,
-    authority: tenant?.score_weight_authority || 0.25,
-    digital:   tenant?.score_weight_digital   || 0.20,
-    contact:   tenant?.score_weight_contact   || 0.20,
+    fit:       effectiveTenant?.score_weight_fit       || 0.35,
+    authority: effectiveTenant?.score_weight_authority || 0.25,
+    digital:   effectiveTenant?.score_weight_digital   || 0.20,
+    contact:   effectiveTenant?.score_weight_contact   || 0.20,
   };
 
   const S = {
@@ -367,27 +362,50 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
           </button>
         </div>
       )}
-      {company.enrichment_status && ["microlink","netlify","scrapedo","hunter","outscraper"].includes(company.data_source) && (
+      {company.enrichment_status && company.data_source === "microlink" && (
         <div style={{background:"#EAF3DE",border:"0.5px solid #b5d9a0",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
-          {(() => {
-            const cfg = SOURCE_CFG[company.data_source] || SOURCE_CFG.mock;
-            return <>
-              <span style={{fontSize:13}}>{cfg.icon}</span>
-              <span style={{fontSize:12,color:"#3B6D11",fontWeight:500}}>Enriquecido via {cfg.l}</span>
-              <span style={{fontSize:11,background:cfg.bg,color:cfg.c,padding:"1px 6px",borderRadius:3,fontWeight:500}}>{cfg.l}</span>
-              {company.enrichment_updated_at && (
-                <span style={{fontSize:11,color:"#3B6D11",opacity:0.7}}>
-                  · {new Date(company.enrichment_updated_at).toLocaleDateString("pt-PT")}
-                </span>
-              )}
-            </>;
-          })()}
+          <span style={{fontSize:13}}>✅</span>
+          <span style={{fontSize:12,color:"#3B6D11",fontWeight:500}}>Enriquecido via Microlink</span>
+          {company.enrichment_updated_at && (
+            <span style={{fontSize:11,color:"#3B6D11",opacity:0.7}}>
+              · {new Date(company.enrichment_updated_at).toLocaleDateString("pt-PT")}
+            </span>
+          )}
         </div>
       )}
       {company.enrichment_status && company.data_source === "manual" && (
         <div style={{background:"#f5f5f4",border:"0.5px solid #e0e0e0",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:13}}>✏️</span>
           <span style={{fontSize:12,color:"#888",fontWeight:500}}>Dados introduzidos manualmente</span>
+        </div>
+      )}
+
+      {/* ── PAINEL DE PROGRESSO ── */}
+      {isEnriching && (
+        <div style={{background:"#fff",border:"0.5px solid #e5e5e5",borderRadius:10,padding:"16px 20px",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+            <div style={{width:14,height:14,borderRadius:"50%",border:"2px solid #185FA5",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+            <span style={{fontSize:13,fontWeight:500,color:"#1a1a1a"}}>A enriquecer empresa...</span>
+          </div>
+          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+          {[{n:1,l:"Crawl do site"},{n:2,l:"Scoring"},{n:3,l:"Análise IA"},{n:4,l:"Concluído"}].map(s => {
+            const isCurrent = enrichProgress?.step === s.n;
+            const isDone    = enrichProgress?.step > s.n || (enrichProgress?.step === s.n && enrichProgress?.done);
+            const isError   = enrichProgress?.error && enrichProgress?.step === s.n;
+            return (
+              <div key={s.n} style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:8}}>
+                <div style={{width:20,height:20,borderRadius:"50%",flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,
+                  background:isError?"#FCEBEB":isDone?"#EAF3DE":isCurrent?"#E6F1FB":"#f5f5f4",
+                  color:isError?"#A32D2D":isDone?"#3B6D11":isCurrent?"#185FA5":"#ccc",
+                  border:isCurrent&&!isDone?"1.5px solid #185FA5":"none"}}>
+                  {isError?"✕":isDone?"✓":s.n}
+                </div>
+                <span style={{fontSize:12,paddingTop:2,color:isError?"#A32D2D":isDone?"#3B6D11":isCurrent?"#185FA5":"#ccc",fontWeight:isCurrent||isDone?500:400}}>
+                  {isCurrent&&enrichProgress?.label ? enrichProgress.label : s.l}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -751,12 +769,13 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
                 </div>
               </div>
             </div>
-            <div style={{marginBottom:12}}>
-              <label style={S.label}>Produtos que vende (texto livre)</label>
-              <input value={products} onChange={e=>setProducts(e.target.value)}
-                placeholder="Ex: suplementos proteicos, vitaminas, colágeno, produtos naturais..."
-                style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"0.5px solid #ddd",fontSize:13,background:"#fff",color:"#1a1a1a",boxSizing:"border-box"}}/>
-            </div>
+            {/* Produtos vendidos vêm do ICP — configurados na página de Perfil ICP */}
+            {icpProfile?.competitor_brands?.length > 0 && (
+              <div style={{marginBottom:12,padding:"8px 12px",background:"#f5f0ff",borderRadius:8}}>
+                <p style={{fontSize:11,color:"#534AB7",fontWeight:500,margin:"0 0 4px"}}>🏪 Concorrentes a monitorizar (ICP)</p>
+                <p style={{fontSize:12,color:"#534AB7",margin:0}}>{icpProfile.competitor_brands.join(", ")}</p>
+              </div>
+            )}
             <div style={{display:"flex",justifyContent:"flex-end"}}>
               <button onClick={saveLead} disabled={savingLead} style={{
                 padding:"6px 14px",borderRadius:7,border:"none",fontSize:12,cursor:"pointer",fontWeight:500,
