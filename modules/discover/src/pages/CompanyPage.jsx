@@ -5,10 +5,12 @@ import { useAuth } from "../AuthContext.jsx";
 import { LEAD_TYPES, LEAD_STATUSES } from "./ListsPage.jsx";
 
 const SOURCE_CFG = {
-  microlink:   { l:"Microlink",   icon:"🔗", c:"#185FA5", bg:"#E6F1FB", desc:"Crawl real do site" },
+  microlink:   { l:"Microlink",   icon:"🔗", c:"#185FA5", bg:"#E6F1FB", desc:"Crawl real via Microlink API" },
+  netlify:     { l:"Fetch",       icon:"⚡", c:"#3B6D11", bg:"#EAF3DE", desc:"Fetch directo server-side (Netlify)" },
+  scrapedo:    { l:"Scrape.do",   icon:"🕷", c:"#534AB7", bg:"#EEEDFE", desc:"Browser headless via Scrape.do" },
   google_maps: { l:"Google Maps", icon:"🗺",  c:"#3B6D11", bg:"#EAF3DE", desc:"Google Maps API" },
-  semrush:     { l:"SEMrush",     icon:"📊", c:"#534AB7", bg:"#EEEDFE", desc:"SEMrush API" },
   outscraper:  { l:"Outscraper",  icon:"⚙",  c:"#854F0B", bg:"#FAEEDA", desc:"Outscraper API" },
+  hunter:      { l:"Hunter.io",   icon:"🎯", c:"#185FA5", bg:"#E6F1FB", desc:"Hunter.io email finder" },
   manual:      { l:"Manual",      icon:"✏",  c:"#888",    bg:"#f5f5f4", desc:"Introduzido manualmente" },
   csv:         { l:"CSV",         icon:"📂", c:"#888",    bg:"#f5f5f4", desc:"Importado via CSV" },
   mock:        { l:"Estimado",    icon:"⚠",  c:"#854F0B", bg:"#FAEEDA", desc:"Dados estimados — sem crawl real" },
@@ -68,7 +70,7 @@ function ScorePill({label, value, color, bg, size="normal"}) {
   );
 }
 
-export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, icpProfile, enrichProgress}) {
+export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, icpProfile}) {
   const {user, tenant, logEvent} = useAuth();
   const [company, setCompany]   = useState(null);
   const [loading, setLoading]   = useState(true);
@@ -110,9 +112,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
       supabase.from("companies_full").select("*").eq("id", companyId).single(),
       supabase.from("disc_validations").select("*").eq("company_id", companyId).order("created_at", {ascending:false}).limit(1).maybeSingle(),
       supabase.from("disc_validations").select("*").eq("company_id", companyId).order("created_at", {ascending:false}),
-      supabase.from("icp_signals").select("*")
-        .eq(icpProfile?.id ? "icp_profile_id" : "tenant_id", icpProfile?.id || tenant?.id)
-        .eq("active", true).order("position"),
+      supabase.from("icp_signals").select("*").eq("tenant_id", tenant?.id).eq("active", true).order("position"),
       supabase.from("company_icp_signals").select("*").eq("company_id", companyId),
     ]);
     if (co) {
@@ -147,7 +147,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
 
     // disc_companies só tem website — resto vai para disc_enrichment
     await supabase.from("disc_companies").update({
-      website:     ensureHttps(contactDraft.website) || null,
+      website:     contactDraft.website || null,
       data_source: "manual",
       updated_at:  new Date().toISOString(),
     }).eq("id", companyId);
@@ -278,14 +278,6 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
   );
   if (!company) return null;
 
-  // Força https:// em todos os links de website
-  function ensureHttps(url) {
-    if (!url) return null;
-    url = url.trim();
-    if (url.startsWith("http://") || url.startsWith("https://")) return url;
-    return "https://" + url;
-  }
-
   const aiCfg = CLASS_CFG[company.score_class] || {bg:"#f5f5f4",c:"#888"};
   const comCfg = CLASS_CFG[combinedClass || company.score_class] || aiCfg;
   const isEnriching = enrichingId === companyId;
@@ -365,7 +357,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
           </button>
         </div>
       )}
-      {company.enrichment_status && company.data_source === "mock" && !company.robots_blocked && (
+      {company.enrichment_status && company.data_source === "mock" && (
         <div style={{background:"#fff8ed",border:"0.5px solid #f0c87a",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:13}}>🟡</span>
           <span style={{fontSize:12,color:"#854F0B",fontWeight:500}}>Dados estimados — crawl real não disponível</span>
@@ -375,79 +367,27 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
           </button>
         </div>
       )}
-      {company.enrichment_status && company.robots_blocked && (
-        <div style={{background:"#f5f0ff",border:"0.5px solid #c4b0e8",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <span style={{fontSize:13}}>🤖</span>
-          <span style={{fontSize:12,color:"#534AB7",fontWeight:500}}>Site bloqueia acesso automático (robots.txt)</span>
-          <span style={{fontSize:11,color:"#534AB7",opacity:0.8}}>· Introduz os contactos manualmente ou aguarda integração com Scrape.do</span>
-          <button onClick={() => setEditingContacts(true)}
-            style={{fontSize:11,padding:"3px 10px",borderRadius:6,border:"none",background:"#534AB7",color:"#fff",cursor:"pointer",marginLeft:4}}>
-            ✏ Editar manualmente
-          </button>
-        </div>
-      )}
-      {company.enrichment_status && company.data_source === "microlink" && (
+      {company.enrichment_status && ["microlink","netlify","scrapedo","hunter","outscraper"].includes(company.data_source) && (
         <div style={{background:"#EAF3DE",border:"0.5px solid #b5d9a0",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:13}}>✅</span>
-          <span style={{fontSize:12,color:"#3B6D11",fontWeight:500}}>Enriquecido via Microlink</span>
-          {company.enrichment_updated_at && (
-            <span style={{fontSize:11,color:"#3B6D11",opacity:0.7}}>
-              · {new Date(company.enrichment_updated_at).toLocaleDateString("pt-PT")}
-            </span>
-          )}
+          {(() => {
+            const cfg = SOURCE_CFG[company.data_source] || SOURCE_CFG.mock;
+            return <>
+              <span style={{fontSize:13}}>{cfg.icon}</span>
+              <span style={{fontSize:12,color:"#3B6D11",fontWeight:500}}>Enriquecido via {cfg.l}</span>
+              <span style={{fontSize:11,background:cfg.bg,color:cfg.c,padding:"1px 6px",borderRadius:3,fontWeight:500}}>{cfg.l}</span>
+              {company.enrichment_updated_at && (
+                <span style={{fontSize:11,color:"#3B6D11",opacity:0.7}}>
+                  · {new Date(company.enrichment_updated_at).toLocaleDateString("pt-PT")}
+                </span>
+              )}
+            </>;
+          })()}
         </div>
       )}
       {company.enrichment_status && company.data_source === "manual" && (
         <div style={{background:"#f5f5f4",border:"0.5px solid #e0e0e0",borderRadius:8,padding:"7px 14px",marginBottom:14,display:"inline-flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:13}}>✏️</span>
           <span style={{fontSize:12,color:"#888",fontWeight:500}}>Dados introduzidos manualmente</span>
-        </div>
-      )}
-
-      {/* ── PAINEL DE PROGRESSO ── */}
-      {isEnriching && (
-        <div style={{background:"#fff",border:"0.5px solid #e5e5e5",borderRadius:10,padding:"16px 20px",marginBottom:16}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-            <div style={{width:16,height:16,borderRadius:"50%",border:"2px solid #185FA5",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
-            <span style={{fontSize:13,fontWeight:500,color:"#1a1a1a"}}>A enriquecer empresa...</span>
-          </div>
-          <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-
-          {/* Steps */}
-          {[
-            {n:1, l:"Crawl do site"},
-            {n:2, l:"Scoring"},
-            {n:3, l:"Análise IA"},
-            {n:4, l:"Concluído"},
-          ].map(s => {
-            const isCurrent = enrichProgress?.step === s.n;
-            const isDone    = enrichProgress?.step > s.n || (enrichProgress?.step === s.n && enrichProgress?.done);
-            const isError   = enrichProgress?.error && enrichProgress?.step === s.n;
-            return (
-              <div key={s.n} style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:8}}>
-                <div style={{
-                  width:20,height:20,borderRadius:"50%",flexShrink:0,marginTop:1,
-                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,
-                  background: isError?"#FCEBEB": isDone?"#EAF3DE": isCurrent?"#E6F1FB":"#f5f5f4",
-                  color:      isError?"#A32D2D": isDone?"#3B6D11": isCurrent?"#185FA5":"#ccc",
-                  border:     isCurrent&&!isDone?"1.5px solid #185FA5":"none",
-                }}>
-                  {isError?"✕": isDone?"✓": isCurrent?
-                    <div style={{width:8,height:8,borderRadius:"50%",border:"1.5px solid #185FA5",borderTopColor:"transparent",animation:"spin 0.8s linear infinite"}}/>
-                  : s.n}
-                </div>
-                <div style={{flex:1}}>
-                  <span style={{
-                    fontSize:12,
-                    color: isError?"#A32D2D": isDone?"#3B6D11": isCurrent?"#185FA5":"#ccc",
-                    fontWeight: isCurrent||isDone ? 500 : 400,
-                  }}>
-                    {isCurrent && enrichProgress?.label ? enrichProgress.label : s.l}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
         </div>
       )}
 
@@ -506,10 +446,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
               /* ── EDITOR DE CONTACTOS ── */
               <div>
                 {[
-                  {k:"website",   l:"Website",   placeholder:"https://www.empresa.pt", onBlur: v => {
-                    const fixed = ensureHttps(v);
-                    if (fixed !== v) setContactDraft(d => ({...d, website: fixed}));
-                  }},
+                  {k:"website",   l:"Website",   placeholder:"https://www.empresa.pt"},
                   {k:"email",     l:"Email",      placeholder:"geral@empresa.pt"},
                   {k:"phone",     l:"Telefone",   placeholder:"+351 21 000 0000"},
                   {k:"whatsapp",  l:"WhatsApp",   placeholder:"https://wa.me/351910000000"},
@@ -523,7 +460,6 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
                     <input
                       value={contactDraft[f.k] || ""}
                       onChange={e => setContactDraft(d => ({...d, [f.k]: e.target.value}))}
-                      onBlur={f.onBlur ? () => f.onBlur(contactDraft[f.k] || "") : undefined}
                       placeholder={f.placeholder}
                       style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"0.5px solid #ddd",fontSize:12,color:"#1a1a1a",background:"#fff",boxSizing:"border-box"}}
                     />
@@ -540,7 +476,7 @@ export default function CompanyPage({companyId, onBack, onEnrich, enrichingId, i
               /* ── VISUALIZAÇÃO DE CONTACTOS ── */
               <div>
                 {[
-                  {l:"Website",   v:company.website,   href:ensureHttps(company.website),                            color:"#185FA5"},
+                  {l:"Website",   v:company.website,   href:company.website,                                          color:"#185FA5"},
                   {l:"Email",     v:company.email,     href:`mailto:${company.email}`,                                color:"#1a1a1a"},
                   {l:"Telefone",  v:company.phone,     href:`tel:${company.phone}`,                                   color:"#1a1a1a"},
                   {l:"WhatsApp",  v:company.whatsapp,  href:company.whatsapp?.startsWith("http")?company.whatsapp:`https://wa.me/${(company.whatsapp||"").replace(/\D/g,"")}`, color:"#25D366"},

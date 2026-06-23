@@ -1066,6 +1066,7 @@ function AppShell() {
   const [selectedCompanyId,setSelectedCompanyId]=useState(null);
   const [selectedIds,setSelectedIds]=useState(new Set());
   const [toast,setToast]=useState(null);
+  const [enrichProgress,setEnrichProgress]=useState(null);
   const showToast=(text,type="info")=>setToast({text,type});
 
   const loadCompanies=useCallback(async()=>{
@@ -1143,6 +1144,7 @@ function AppShell() {
           onEnrich={enrichCompany}
           enrichingId={enrichingId}
           icpProfile={icpProfile}
+          enrichProgress={enrichProgress}
         />
       </main>
     </div>
@@ -1171,13 +1173,16 @@ function AppShell() {
 
   async function enrichCompany(company, icpProfile = null) {
     if(enrichingId===company.id)return;
-    if(!tenant?.id){showToast("Workspace não carregado. Tente novamente.","error");return;}
+    const effectiveTen = tenant || impersonating?.tenant;
+    if(!effectiveTen?.id){showToast("Workspace não carregado. Tente novamente.","error");return;}
     setEnrichingId(company.id);
+    const prog = (step, label, extra={}) => setEnrichProgress({step, label, companyId:company.id, ...extra});
 
     // Verifica limite de uso antes de avançar
-    const usage = await canSearch(tenant.id);
+    const usage = await canSearch(effectiveTen.id);
     if (usage.usage_status === "blocked") {
       setEnrichingId(null);
+      setEnrichProgress(null);
       showToast("Limite de pesquisas atingido. Upload CSV disponível ou aguarda o próximo ciclo.", "warning");
       return;
     }
@@ -1185,20 +1190,27 @@ function AppShell() {
     await supabase.from("disc_companies").update({status:"enriching"}).eq("id",company.id);
 
     try {
-      // Cascata Microlink → Netlify → Scrape.do (planos Pro/Enterprise)
-      // scrapedo_api_key = "enabled" sinaliza à Netlify Function para usar SCRAPEDO_KEY server-side
+      // Step 1 — Crawl (cascata Microlink → Netlify → Scrape.do)
+      prog(1, "🔍 A analisar o site...");
       const enrichContext = {
         ...(icpProfile || {}),
-        scrapedo_api_key: ["pro","enterprise"].includes(tenant?.plan) ? "enabled" : null,
+        scrapedo_api_key: ["pro","enterprise"].includes(effectiveTen?.plan) ? "enabled" : null,
       };
       const { enrichment: rawEnrichment, signals, _source } = await enrichCompanyReal(company, enrichContext);
+
+      const isRobotsBlocked = rawEnrichment.robots_blocked || _source === "blocked";
+      const crawlLabel = isRobotsBlocked
+        ? "🤖 Site bloqueia acesso automático"
+        : `✅ ${_source} — ${[rawEnrichment.email?"email":"", rawEnrichment.phone?"telefone":"", rawEnrichment.instagram?"instagram":""].filter(Boolean).join(", ")||"sem contactos encontrados"}`;
+      prog(1, crawlLabel, { source: _source, done: true, robots: isRobotsBlocked });
+
       console.log(`[Revora] Enriquecimento via ${_source} para ${company.name}`, {
         email: rawEnrichment.email, phone: rawEnrichment.phone,
         instagram: rawEnrichment.instagram, competitors: rawEnrichment.competitors_detected,
       });
 
       // RGPD: filtra emails pessoais, marca fonte pública, define retenção
-      const enrichment = rgpdFilter({ ...rawEnrichment, tenant_id:tenant.id, company_id:company.id });
+      const enrichment = rgpdFilter({ ...rawEnrichment, tenant_id:effectiveTen.id, company_id:company.id });
 
       // Add source tracking + competitor data + timestamp
       const enrichmentWithSource = {
@@ -1215,9 +1227,9 @@ function AppShell() {
       await supabase.from("disc_companies").update({ data_source: _source || "mock" }).eq("id", company.id);
 
       // Scoring com keywords do tenant + signals (inclui bónus concorrentes)
-      const scores = computeScores(enrichment, signals, tenant);
+      const scores = computeScores(enrichment, signals, effectiveTen);
       const { error: scoringErr } = await supabase.from("disc_scoring").upsert({
-        tenant_id:      tenant.id,
+        tenant_id:      effectiveTen.id,
         company_id:     company.id,
         fit_score:      scores.fitScore,
         digital_score:  scores.digitalScore,
@@ -1229,9 +1241,12 @@ function AppShell() {
       },{onConflict:"company_id"});
       if(scoringErr) console.error("[Revora] disc_scoring error:", scoringErr.message);
 
-      // Sinais detectados
-      await supabase.from("disc_signals").upsert({tenant_id:tenant.id,company_id:company.id,...signals},{onConflict:"company_id"});
+      prog(2, `📊 Score calculado — ${scores.finalScore} (Classe ${scores.scoreClass})`, {done:true});
 
+      // Sinais detectados
+      await supabase.from("disc_signals").upsert({tenant_id:effectiveTen.id,company_id:company.id,...signals},{onConflict:"company_id"});
+
+      prog(3, "🤖 A gerar análise IA...");
       // Tenta análise IA via Netlify Function
       // Se falhar (sem key configurada no servidor), usa mock
       let ai;
@@ -1241,16 +1256,20 @@ function AppShell() {
       } catch {
         ai = await analyzeCompanyMock(company, enrichment, tenant);
       }
-      await supabase.from("disc_ai_analysis").upsert({tenant_id:tenant.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
+      await supabase.from("disc_ai_analysis").upsert({tenant_id:effectiveTen.id,company_id:company.id,executive_summary:ai.executive_summary,strengths:ai.strengths||[],weaknesses:ai.weaknesses||[],partnership_potential:ai.partnership_potential,recommended_action:ai.recommended_action,confidence_score:ai.confidence_score},{onConflict:"company_id"});
 
       const { error: statusErr } = await supabase.from("disc_companies").update({status:"scored"}).eq("id",company.id);
       if(statusErr) console.error("[Revora] status update error:", statusErr.message);
       await logEvent("company.enriched","company",company.id,{score:scores.finalScore,class:scores.scoreClass});
       // Regista uso para controlo de limites e custos reais
       await logUsage(tenant.id, "microlink", company.id);
-      await logUsage(tenant.id, "ai_analysis", company.id, 800, 300);
+      await logUsage(effectiveTen.id, "ai_analysis", company.id, 800, 300);
+      prog(4, `✅ Concluído · ${_source?.toUpperCase()} · Score ${scores.finalScore} · Classe ${scores.scoreClass}`, {done:true, final:true});
+      setTimeout(() => setEnrichProgress(null), 4000);
       showToast(`${company.name} · Score ${scores.finalScore} (Classe ${scores.scoreClass})`,"success");
     } catch(err) {
+      prog(0, `❌ Erro: ${err.message}`, {error:true});
+      setTimeout(() => setEnrichProgress(null), 5000);
       await supabase.from("disc_companies").update({status:"new"}).eq("id",company.id);
       showToast(`Erro ao enriquecer ${company.name}: ${err.message}`,"error");
     } finally {
@@ -1345,7 +1364,9 @@ function AppShell() {
   }
 
   async function submitValidation(companyId,rating,aiScore) {
-    const{error}=await supabase.from("disc_validations").insert({tenant_id:tenant.id,company_id:companyId,reviewer_id:user.id,ai_score:aiScore,human_rating:rating});
+    const effectiveTen = tenant || impersonating?.tenant;
+    if(!effectiveTen?.id){showToast("Workspace não carregado","error");return;}
+    const{error}=await supabase.from("disc_validations").insert({tenant_id:effectiveTen.id,company_id:companyId,reviewer_id:user.id,ai_score:aiScore,human_rating:rating});
     if(error)showToast("Erro ao guardar","error");
     else{setValidations(v=>({...v,[companyId]:rating}));await logEvent("validation.submitted","company",companyId,{rating,ai_score:aiScore});showToast("Avaliação guardada!","success");}
   }
