@@ -160,7 +160,8 @@ export function applyFilters(companies, filters, search="") {
 
 // ── LISTS PAGE ────────────────────────────────────────────────
 export default function ListsPage({ companies, onSelectCompany }) {
-  const { tenant, user } = useAuth();
+  const { tenant, user, impersonating } = useAuth();
+  const effectiveTenant = tenant || impersonating?.tenant;
   const [lists,      setLists]      = useState([]);
   const [activeList, setActiveList] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -174,28 +175,30 @@ export default function ListsPage({ companies, onSelectCompany }) {
   const [useAsICP,setUseAsICP]= useState(false);
   const [saving,  setSaving]  = useState(false);
 
-  useEffect(()=>{ if(tenant)loadLists(); },[tenant]);
+  useEffect(()=>{ if(effectiveTenant)loadLists(); },[effectiveTenant]);
 
   async function loadLists() {
+    if(!effectiveTenant?.id) return;
     setLoading(true);
     const { data } = await supabase.from("disc_lists")
-      .select("*").eq("tenant_id",tenant.id).order("created_at",{ascending:false});
+      .select("*").eq("tenant_id",effectiveTenant.id).order("created_at",{ascending:false});
     setLists(data||[]);
     setLoading(false);
   }
 
   async function saveList() {
     if(!name.trim())return;
+    if(!effectiveTenant?.id){ console.error("Tenant não carregado"); return; }
     setSaving(true);
     const filtered = applyFilters(companies, filters);
     const data = {
-      tenant_id:     tenant.id,
+      tenant_id:     effectiveTenant.id,
       name:          name.trim(),
       description:   desc,
       filters,
       company_count: filtered.length,
       use_as_icp:    useAsICP,
-      created_by:    user.id,
+      created_by:    user?.id,
     };
     if(editList?.id) {
       await supabase.from("disc_lists").update(data).eq("id",editList.id);
