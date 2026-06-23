@@ -68,14 +68,16 @@ function ICPWizard({ onSave, onCancel, tenant, existing }) {
     locations:   existing?.locations   || [],
     volume_min:  existing?.volume_min  || "medio",
     prompt:      existing?.prompt      || "",
-    fit_keywords:existing?.fit_keywords|| [],
-    weight_fit:       existing?.weight_fit       || 0.35,
+    fit_keywords:      existing?.fit_keywords      || [],
+    competitor_brands: existing?.competitor_brands || [],
+    weight_fit:        existing?.weight_fit        || 0.35,
     weight_authority: existing?.weight_authority || 0.25,
     weight_digital:   existing?.weight_digital   || 0.20,
     weight_contact:   existing?.weight_contact   || 0.20,
   });
   const [saving, setSaving] = useState(false);
   const [keywordInput, setKeywordInput] = useState((existing?.fit_keywords||[]).join(", "));
+  const [competitorInput, setCompetitorInput] = useState((existing?.competitor_brands||[]).join(", "));
 
   const totalWeight = Number(form.weight_fit)+Number(form.weight_authority)+Number(form.weight_digital)+Number(form.weight_contact);
   const weightsOk = Math.abs(totalWeight-1)<0.01;
@@ -108,7 +110,8 @@ function ICPWizard({ onSave, onCancel, tenant, existing }) {
       volume_min:       form.volume_min,
       prompt:           form.prompt || generatePrompt(),
       fit_keywords:     keywords,
-      weight_fit:       Number(form.weight_fit),
+      competitor_brands: competitorInput.split(",").map(k=>k.trim()).filter(Boolean),
+      weight_fit:        Number(form.weight_fit),
       weight_authority: Number(form.weight_authority),
       weight_digital:   Number(form.weight_digital),
       weight_contact:   Number(form.weight_contact),
@@ -116,9 +119,9 @@ function ICPWizard({ onSave, onCancel, tenant, existing }) {
       plan_tier:        "included",
     };
     if(existing?.id) {
-      await supabase.from("icp_profiles").update(data).eq("id",existing.id);
+      await supabase.from("disc_icp_profiles").update(data).eq("id",existing.id);
     } else {
-      await supabase.from("icp_profiles").insert(data);
+      await supabase.from("disc_icp_profiles").insert(data);
     }
     setSaving(false);
     onSave();
@@ -256,6 +259,14 @@ function ICPWizard({ onSave, onCancel, tenant, existing }) {
               placeholder="ginásio, farmácia, nutricionista, wellness, colágeno..."/>
             <p style={{fontSize:11,color:"#aaa",marginTop:4}}>Cada keyword encontrada no site adiciona pontos ao Fit Score</p>
           </div>
+
+          <div style={{marginTop:16}}>
+            <label style={S.label}>Marcas concorrentes a detectar nos sites</label>
+            <textarea style={{...S.input,minHeight:60,resize:"vertical"}} value={competitorInput}
+              onChange={e=>setCompetitorInput(e.target.value)}
+              placeholder="AllNutrition, Prozis, Myprotein, Gold Standard, HSN..."/>
+            <p style={{fontSize:11,color:"#aaa",marginTop:4}}>Quando o crawler detecta estas marcas no site, sobe o score — empresa já vende neste nicho</p>
+          </div>
         </div>
       )}
 
@@ -290,7 +301,8 @@ function ICPWizard({ onSave, onCancel, tenant, existing }) {
             {l:"Segmentos",   v:form.segments.join(", ")||"Todos"},
             {l:"Localizações",v:form.locations.join(", ")||"Portugal"},
             {l:"Volume min",  v:VOLUME_OPTIONS.find(v=>v.v===form.volume_min)?.l+" ("+VOLUME_OPTIONS.find(v=>v.v===form.volume_min)?.sub+")"},
-            {l:"Pesos",       v:`Fit ${Math.round(form.weight_fit*100)}% · Auth ${Math.round(form.weight_authority*100)}% · Digital ${Math.round(form.weight_digital*100)}% · Contacto ${Math.round(form.weight_contact*100)}%`},
+            {l:"Pesos",        v:`Fit ${Math.round(form.weight_fit*100)}% · Auth ${Math.round(form.weight_authority*100)}% · Digital ${Math.round(form.weight_digital*100)}% · Contacto ${Math.round(form.weight_contact*100)}%`},
+            {l:"Concorrentes", v:competitorInput||"Nenhum definido"},
           ].map(f=>(
             <div key={f.l} style={{display:"flex",gap:12,padding:"8px 0",borderBottom:"0.5px solid #f5f5f4"}}>
               <span style={{fontSize:12,color:"#aaa",width:100,flexShrink:0}}>{f.l}</span>
@@ -340,8 +352,8 @@ export default function ICPPage({ companies, validations, onSelectCompany }) {
 
   async function loadProfiles() {
     setLoading(true);
-    const { data } = await supabase.from("icp_profiles")
-      .select("*").eq("tenant_id",tenant.id).eq("active",true).order("is_default",{ascending:false});
+    const { data } = await supabase.from("disc_icp_profiles")
+      .select("*").eq("tenant_id",tenant.id).eq("is_active",true).order("is_default",{ascending:false});
     setProfiles(data||[]);
     if(data?.length>0&&!activeICP) setActiveICP(data[0].id);
 
@@ -373,7 +385,7 @@ export default function ICPPage({ companies, validations, onSelectCompany }) {
 
   async function deleteProfile(id) {
     if(!confirm("Apagar este ICP?"))return;
-    await supabase.from("icp_profiles").update({active:false}).eq("id",id);
+    await supabase.from("disc_icp_profiles").update({active:false}).eq("id",id);
     loadProfiles();
   }
 
@@ -468,6 +480,16 @@ export default function ICPPage({ companies, validations, onSelectCompany }) {
                 {active.locations?.map(l=>(
                   <span key={l} style={{fontSize:11,background:"#E6F1FB",color:"#185FA5",padding:"2px 8px",borderRadius:4}}>📍{l}</span>
                 ))}
+                {active.competitor_brands?.length>0&&(
+                  <div style={{width:"100%",marginTop:8,padding:"8px 12px",background:"#f5f0ff",borderRadius:8}}>
+                    <p style={{fontSize:11,color:"#534AB7",fontWeight:500,margin:"0 0 4px"}}>🏪 Concorrentes a detectar</p>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                      {active.competitor_brands.map(b=>(
+                        <span key={b} style={{fontSize:11,background:"#EEEDFE",color:"#534AB7",padding:"2px 8px",borderRadius:4}}>{b}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               {/* Pesos */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>

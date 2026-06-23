@@ -159,17 +159,24 @@ export async function crawlWebsite(url, competitorList = []) {
       `https://api.microlink.io?url=${encodeURIComponent(clean)}&meta=true&screenshot=false&html=true`,
       { signal: AbortSignal.timeout(10000) }
     );
-    const data = await res.json();
+    // Microlink pode retornar erro como JSON ou como texto
+    let data;
+    try { data = await res.json(); } catch { return null; }
+
     if (data.status !== "success") {
-      // Detecta bloqueio por robots.txt — retorna flag especial em vez de null
-      const isRobotsBlocked = data.type === "ROBOTS_DISALLOWED"
-        || data.message?.includes("ROBOTS")
-        || data.message?.includes("robots")
-        || data.message?.includes("disallow");
+      // Detecta bloqueio por robots.txt
+      const rawStr = JSON.stringify(data).toLowerCase();
+      const isRobotsBlocked =
+        data.type === "ROBOTS_DISALLOWED" ||
+        rawStr.includes("robots") ||
+        rawStr.includes("disallow") ||
+        rawStr.includes("automated") ||
+        rawStr.includes("not allowed");
       if (isRobotsBlocked) {
         console.warn("[Microlink] Site bloqueia robots.txt:", url);
         return { _robots_blocked: true, _source: "blocked" };
       }
+      console.warn("[Microlink] Falha no crawl:", data.status, data.message || data.type || "");
       return null;
     }
 
