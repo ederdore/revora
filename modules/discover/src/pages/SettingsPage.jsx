@@ -101,17 +101,27 @@ export default function SettingsPage() {
   async function sendInvite() {
     if (!inviteEmail.trim()) return;
     setLoading(true); setMsg(null);
-    const { error } = await supabase.from("invitations").insert({
-      tenant_id:  tenant.id,
-      email:      inviteEmail.trim(),
-      role:       inviteRole,
-      invited_by: user.id,
-    });
-    if (error) setMsg({ type:"err", text:"Erro: " + error.message });
-    else {
-      await logEvent("member.invited", "user", null, { email:inviteEmail, role:inviteRole });
-      setMsg({ type:"ok", text:`Convite enviado para ${inviteEmail}` });
-      setInviteEmail("");
+    try {
+      const res = await fetch("/.netlify/functions/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email:      inviteEmail.trim().toLowerCase(),
+          role:       inviteRole,
+          tenant_id:  tenant.id,
+          invited_by: user.id,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setMsg({ type:"err", text: data.error || "Erro ao enviar convite" });
+      } else {
+        await logEvent("member.invited", "user", null, { email:inviteEmail, role:inviteRole });
+        setMsg({ type:"ok", text:`✓ Convite enviado para ${inviteEmail} — o utilizador receberá um email para activar a conta` });
+        setInviteEmail("");
+      }
+    } catch (err) {
+      setMsg({ type:"err", text:"Erro de ligação: " + err.message });
     }
     setLoading(false);
   }
