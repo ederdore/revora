@@ -34,22 +34,13 @@ const WEIGHT_FIELDS = [
 ];
 
 export default function SettingsPage() {
-  const { tenant, role, user, logEvent } = useAuth();
+  const { tenant, role, user, logEvent, impersonating } = useAuth();
   const [members, setMembers] = useState([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("commercial");
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(false);
   const canManage = role === "admin" || role === "manager";
-
-  // Criar utilizador com senha
-  const [newEmail,    setNewEmail]    = useState("");
-  const [newName,     setNewName]     = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newRole,     setNewRole]     = useState("commercial");
-  const [showPassword, setShowPassword] = useState(false);
-  const [createMsg,   setCreateMsg]   = useState(null);
-  const [creating,    setCreating]    = useState(false);
 
   // Context fields
   const [context, setContext]   = useState("");
@@ -67,7 +58,8 @@ export default function SettingsPage() {
   const weightsValid = Math.abs(totalWeight - 1) < 0.01;
 
   useEffect(() => {
-    if (tenant) {
+    const tid = tenant?.id || impersonating?.tenant?.id;
+    if (tid) {
       loadMembers();
       setContext(tenant.business_context || "");
       setKeywords((tenant.fit_keywords || []).join(", "));
@@ -82,10 +74,14 @@ export default function SettingsPage() {
   }, [tenant]);
 
   async function loadMembers() {
-    const { data } = await supabase
+    const tid = tenant?.id || impersonating?.tenant?.id;
+    if (!tid) return;
+    const { data, error } = await supabase
       .from("tenant_users")
-      .select("*, profiles(full_name)")
-      .eq("tenant_id", tenant.id);
+      .select("*, profiles(id, full_name, email, avatar_url)")
+      .eq("tenant_id", tid)
+      .order("created_at", { ascending: true });
+    if (error) console.error("[loadMembers]", error.message);
     setMembers(data || []);
   }
 
@@ -123,48 +119,6 @@ export default function SettingsPage() {
       setInviteEmail("");
     }
     setLoading(false);
-  }
-
-  function generatePassword() {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
-    return Array.from({length: 12}, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-  }
-
-  async function createUser() {
-    if (!newEmail.trim() || !newPassword.trim() || !newName.trim()) {
-      setCreateMsg({ type:"err", text:"Nome, email e senha são obrigatórios" });
-      return;
-    }
-    if (newPassword.length < 8) {
-      setCreateMsg({ type:"err", text:"Senha deve ter pelo menos 8 caracteres" });
-      return;
-    }
-    setCreating(true); setCreateMsg(null);
-    try {
-      const res = await fetch("/.netlify/functions/create-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email:     newEmail.trim().toLowerCase(),
-          password:  newPassword,
-          full_name: newName.trim(),
-          role:      newRole,
-          tenant_id: tenant.id,
-          invited_by:user.id,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setCreateMsg({ type:"err", text: data.error || "Erro ao criar utilizador" });
-      } else {
-        setCreateMsg({ type:"ok", text:`✓ Utilizador criado! Email: ${newEmail} · Senha temporária enviada.` });
-        setNewEmail(""); setNewName(""); setNewPassword(""); 
-        loadMembers();
-      }
-    } catch (err) {
-      setCreateMsg({ type:"err", text: "Erro: " + err.message });
-    }
-    setCreating(false);
   }
 
   async function removeMember(userId) {
@@ -267,19 +221,32 @@ export default function SettingsPage() {
       {/* MEMBROS */}
       <div style={S.card}>
         <p style={{ ...S.title, marginBottom:14 }}>Membros da equipa</p>
+        {members.length === 0 && (
+          <p style={{ fontSize:13, color:"#aaa", padding:"10px 0" }}>Sem membros ainda.</p>
+        )}
         {members.map(m => {
-          const rc = ROLE_COLORS[m.role] || ROLE_COLORS.commercial;
+          const rc   = ROLE_COLORS[m.role] || ROLE_COLORS.commercial;
+          const name = m.profiles?.full_name || m.profiles?.email || "Sem nome";
+          const email = m.profiles?.email || m.user_id?.slice(0,8) + "...";
+          const isCurrentUser = m.user_id === user?.id;
           return (
             <div key={m.id} style={S.row}>
-              <div>
-                <p style={{ fontSize:13, fontWeight:500, margin:0 }}>{m.profiles?.full_name || "Sem nome"}</p>
-                <p style={{ fontSize:11, color:"#aaa", margin:0 }}>{m.user_id.slice(0,8)}...</p>
+              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                <div style={{ width:32, height:32, borderRadius:"50%", background:"#f0f0f0", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:600, color:"#888", flexShrink:0 }}>
+                  {name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p style={{ fontSize:13, fontWeight:500, margin:0 }}>
+                    {name} {isCurrentUser && <span style={{ fontSize:10, color:"#aaa" }}>(tu)</span>}
+                  </p>
+                  <p style={{ fontSize:11, color:"#aaa", margin:0 }}>{email}</p>
+                </div>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <span style={{ background:rc.bg, color:rc.c, padding:"2px 8px", borderRadius:5, fontSize:11, fontWeight:500 }}>
-                  {ROLE_LABELS[m.role]}
+                  {ROLE_LABELS[m.role] || m.role}
                 </span>
-                {role === "admin" && m.user_id !== user.id && (
+                {(role === "admin" || role === "manager") && !isCurrentUser && (
                   <button style={S.btnDanger} onClick={() => removeMember(m.user_id)}>Remover</button>
                 )}
               </div>
@@ -288,71 +255,24 @@ export default function SettingsPage() {
         })}
       </div>
 
-      {/* CRIAR UTILIZADOR */}
+      {/* CONVIDAR */}
       {canManage && (
         <div style={S.card}>
-          <p style={{ ...S.title, marginBottom:4 }}>Adicionar membro</p>
-          <p style={S.sub}>Cria a conta directamente — o utilizador recebe email e senha para entrar.</p>
-
-          {createMsg && (
-            <div style={createMsg.type==="err" ? S.err : S.ok}>
-              {createMsg.text}
-            </div>
-          )}
-
-          <div style={{ ...S.grid2, marginBottom:12 }}>
-            <div>
-              <label style={S.label}>Nome completo *</label>
-              <input style={S.input} value={newName}
-                onChange={e => setNewName(e.target.value)}
-                placeholder="João Silva"/>
-            </div>
-            <div>
-              <label style={S.label}>Email *</label>
-              <input style={S.input} type="email" value={newEmail}
-                onChange={e => setNewEmail(e.target.value)}
-                placeholder="joao@empresa.com"/>
-            </div>
+          <p style={{ ...S.title, marginBottom:14 }}>Convidar membro</p>
+          <div style={{ display:"flex", gap:10 }}>
+            <input style={{ ...S.input, flex:1 }} type="email"
+              value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
+              placeholder="email@empresa.com"/>
+            <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
+              style={{ ...S.input, width:130 }}>
+              <option value="commercial">Comercial</option>
+              <option value="manager">Gestor</option>
+            </select>
+            <button style={S.btn} onClick={sendInvite} disabled={loading}>Convidar</button>
           </div>
-
-          <div style={{ ...S.grid2, marginBottom:16 }}>
-            <div>
-              <label style={S.label}>Senha temporária *</label>
-              <div style={{ display:"flex", gap:6 }}>
-                <input
-                  style={{ ...S.input, flex:1, fontFamily:"monospace", letterSpacing:1 }}
-                  type={showPassword ? "text" : "password"}
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  placeholder="mínimo 8 caracteres"/>
-                <button onClick={() => setShowPassword(s => !s)}
-                  style={{ ...S.btnSm, flexShrink:0 }}>
-                  {showPassword ? "🙈" : "👁"}
-                </button>
-                <button onClick={() => { const p = generatePassword(); setNewPassword(p); setShowPassword(true); }}
-                  style={{ ...S.btnSm, flexShrink:0 }} title="Gerar senha automática">
-                  🎲
-                </button>
-              </div>
-              <p style={{ fontSize:11, color:"#aaa", marginTop:4 }}>
-                Partilha esta senha com o utilizador de forma segura.
-              </p>
-            </div>
-            <div>
-              <label style={S.label}>Função</label>
-              <select value={newRole} onChange={e => setNewRole(e.target.value)} style={S.input}>
-                <option value="commercial">Comercial</option>
-                <option value="manager">Gestor</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display:"flex", justifyContent:"flex-end" }}>
-            <button style={{ ...S.btn, opacity:creating?0.6:1 }}
-              onClick={createUser} disabled={creating}>
-              {creating ? "A criar..." : "Criar utilizador"}
-            </button>
-          </div>
+          <p style={{ fontSize:11, color:"#aaa", marginTop:8 }}>
+            O convite expira em 7 dias.
+          </p>
         </div>
       )}
 
