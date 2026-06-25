@@ -34,7 +34,7 @@ const WEIGHT_FIELDS = [
 ];
 
 export default function SettingsPage() {
-  const { tenant, role, user, logEvent, impersonating } = useAuth();
+  const { tenant, role, user, logEvent } = useAuth();
   const [members, setMembers] = useState([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("commercial");
@@ -57,33 +57,44 @@ export default function SettingsPage() {
   const totalWeight = Object.values(weights).reduce((a,b) => a + Number(b), 0);
   const weightsValid = Math.abs(totalWeight - 1) < 0.01;
 
-  useEffect(() => {
-    const tid = tenant?.id || impersonating?.tenant?.id;
-    if (tid) {
-      loadMembers();
-      setContext(tenant.business_context || "");
-      setKeywords((tenant.fit_keywords || []).join(", "));
-      setAiCtx(tenant.ai_prompt_context || "");
-      setWeights({
-        score_weight_fit:       tenant.score_weight_fit       || 0.35,
-        score_weight_authority: tenant.score_weight_authority || 0.25,
-        score_weight_digital:   tenant.score_weight_digital   || 0.20,
-        score_weight_contact:   tenant.score_weight_contact   || 0.20,
-      });
-    }
-  }, [tenant]);
-
   async function loadMembers() {
     const tid = tenant?.id || impersonating?.tenant?.id;
     if (!tid) return;
-    const { data, error } = await supabase
+
+    const { data: tuData, error: tuError } = await supabase
       .from("tenant_users")
-      .select("*, profiles(id, full_name, email, avatar_url)")
+      .select("*")
       .eq("tenant_id", tid)
       .order("created_at", { ascending: true });
-    if (error) console.error("[loadMembers]", error.message);
-    setMembers(data || []);
+
+    if (tuError) { console.error("[loadMembers]", tuError.message); return; }
+    if (!tuData?.length) { setMembers([]); return; }
+
+    const userIds = tuData.map(m => m.user_id);
+    const { data: profData } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", userIds);
+
+    const profMap = Object.fromEntries((profData || []).map(p => [p.id, p]));
+    setMembers(tuData.map(m => ({ ...m, profile: profMap[m.user_id] || null })));
   }
+
+  useEffect(() => {
+    const effectiveTen = tenant || impersonating?.tenant;
+    if (effectiveTen) {
+      loadMembers();
+      setContext(effectiveTen.business_context || "");
+      setKeywords((effectiveTen.fit_keywords || []).join(", "));
+      setAiCtx(effectiveTen.ai_prompt_context || "");
+      setWeights({
+        score_weight_fit:       effectiveTen.score_weight_fit       || 0.35,
+        score_weight_authority: effectiveTen.score_weight_authority || 0.25,
+        score_weight_digital:   effectiveTen.score_weight_digital   || 0.20,
+        score_weight_contact:   effectiveTen.score_weight_contact   || 0.20,
+      });
+    }
+  }, [tenant, impersonating]);
 
   async function saveConfig() {
     if (!weightsValid) { setMsg({ type:"err", text:"Os pesos têm de somar 100%." }); return; }
@@ -221,32 +232,19 @@ export default function SettingsPage() {
       {/* MEMBROS */}
       <div style={S.card}>
         <p style={{ ...S.title, marginBottom:14 }}>Membros da equipa</p>
-        {members.length === 0 && (
-          <p style={{ fontSize:13, color:"#aaa", padding:"10px 0" }}>Sem membros ainda.</p>
-        )}
         {members.map(m => {
-          const rc   = ROLE_COLORS[m.role] || ROLE_COLORS.commercial;
-          const name = m.profiles?.full_name || m.profiles?.email || "Sem nome";
-          const email = m.profiles?.email || m.user_id?.slice(0,8) + "...";
-          const isCurrentUser = m.user_id === user?.id;
+          const rc = ROLE_COLORS[m.role] || ROLE_COLORS.commercial;
           return (
             <div key={m.id} style={S.row}>
-              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                <div style={{ width:32, height:32, borderRadius:"50%", background:"#f0f0f0", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:600, color:"#888", flexShrink:0 }}>
-                  {name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p style={{ fontSize:13, fontWeight:500, margin:0 }}>
-                    {name} {isCurrentUser && <span style={{ fontSize:10, color:"#aaa" }}>(tu)</span>}
-                  </p>
-                  <p style={{ fontSize:11, color:"#aaa", margin:0 }}>{email}</p>
-                </div>
+              <div>
+                <p style={{ fontSize:13, fontWeight:500, margin:0 }}>{m.profile?.full_name || "Sem nome"}</p>
+                <p style={{ fontSize:11, color:"#aaa", margin:0 }}>{m.user_id.slice(0,8)}...</p>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <span style={{ background:rc.bg, color:rc.c, padding:"2px 8px", borderRadius:5, fontSize:11, fontWeight:500 }}>
-                  {ROLE_LABELS[m.role] || m.role}
+                  {ROLE_LABELS[m.role]}
                 </span>
-                {(role === "admin" || role === "manager") && !isCurrentUser && (
+                {role === "admin" && m.user_id !== user.id && (
                   <button style={S.btnDanger} onClick={() => removeMember(m.user_id)}>Remover</button>
                 )}
               </div>
