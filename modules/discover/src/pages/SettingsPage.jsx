@@ -42,6 +42,15 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const canManage = role === "admin" || role === "manager";
 
+  // Criar utilizador com senha
+  const [newEmail,    setNewEmail]    = useState("");
+  const [newName,     setNewName]     = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole,     setNewRole]     = useState("commercial");
+  const [showPassword, setShowPassword] = useState(false);
+  const [createMsg,   setCreateMsg]   = useState(null);
+  const [creating,    setCreating]    = useState(false);
+
   // Context fields
   const [context, setContext]   = useState("");
   const [keywords, setKeywords] = useState("");
@@ -101,29 +110,61 @@ export default function SettingsPage() {
   async function sendInvite() {
     if (!inviteEmail.trim()) return;
     setLoading(true); setMsg(null);
+    const { error } = await supabase.from("invitations").insert({
+      tenant_id:  tenant.id,
+      email:      inviteEmail.trim(),
+      role:       inviteRole,
+      invited_by: user.id,
+    });
+    if (error) setMsg({ type:"err", text:"Erro: " + error.message });
+    else {
+      await logEvent("member.invited", "user", null, { email:inviteEmail, role:inviteRole });
+      setMsg({ type:"ok", text:`Convite enviado para ${inviteEmail}` });
+      setInviteEmail("");
+    }
+    setLoading(false);
+  }
+
+  function generatePassword() {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
+    return Array.from({length: 12}, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  }
+
+  async function createUser() {
+    if (!newEmail.trim() || !newPassword.trim() || !newName.trim()) {
+      setCreateMsg({ type:"err", text:"Nome, email e senha são obrigatórios" });
+      return;
+    }
+    if (newPassword.length < 8) {
+      setCreateMsg({ type:"err", text:"Senha deve ter pelo menos 8 caracteres" });
+      return;
+    }
+    setCreating(true); setCreateMsg(null);
     try {
-      const res = await fetch("/.netlify/functions/invite", {
+      const res = await fetch("/.netlify/functions/create-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email:      inviteEmail.trim().toLowerCase(),
-          role:       inviteRole,
-          tenant_id:  tenant.id,
-          invited_by: user.id,
+          email:     newEmail.trim().toLowerCase(),
+          password:  newPassword,
+          full_name: newName.trim(),
+          role:      newRole,
+          tenant_id: tenant.id,
+          invited_by:user.id,
         }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
-        setMsg({ type:"err", text: data.error || "Erro ao enviar convite" });
+        setCreateMsg({ type:"err", text: data.error || "Erro ao criar utilizador" });
       } else {
-        await logEvent("member.invited", "user", null, { email:inviteEmail, role:inviteRole });
-        setMsg({ type:"ok", text:`✓ Convite enviado para ${inviteEmail} — o utilizador receberá um email para activar a conta` });
-        setInviteEmail("");
+        setCreateMsg({ type:"ok", text:`✓ Utilizador criado! Email: ${newEmail} · Senha temporária enviada.` });
+        setNewEmail(""); setNewName(""); setNewPassword(""); 
+        loadMembers();
       }
     } catch (err) {
-      setMsg({ type:"err", text:"Erro de ligação: " + err.message });
+      setCreateMsg({ type:"err", text: "Erro: " + err.message });
     }
-    setLoading(false);
+    setCreating(false);
   }
 
   async function removeMember(userId) {
@@ -247,24 +288,71 @@ export default function SettingsPage() {
         })}
       </div>
 
-      {/* CONVIDAR */}
+      {/* CRIAR UTILIZADOR */}
       {canManage && (
         <div style={S.card}>
-          <p style={{ ...S.title, marginBottom:14 }}>Convidar membro</p>
-          <div style={{ display:"flex", gap:10 }}>
-            <input style={{ ...S.input, flex:1 }} type="email"
-              value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
-              placeholder="email@empresa.com"/>
-            <select value={inviteRole} onChange={e => setInviteRole(e.target.value)}
-              style={{ ...S.input, width:130 }}>
-              <option value="commercial">Comercial</option>
-              <option value="manager">Gestor</option>
-            </select>
-            <button style={S.btn} onClick={sendInvite} disabled={loading}>Convidar</button>
+          <p style={{ ...S.title, marginBottom:4 }}>Adicionar membro</p>
+          <p style={S.sub}>Cria a conta directamente — o utilizador recebe email e senha para entrar.</p>
+
+          {createMsg && (
+            <div style={createMsg.type==="err" ? S.err : S.ok}>
+              {createMsg.text}
+            </div>
+          )}
+
+          <div style={{ ...S.grid2, marginBottom:12 }}>
+            <div>
+              <label style={S.label}>Nome completo *</label>
+              <input style={S.input} value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="João Silva"/>
+            </div>
+            <div>
+              <label style={S.label}>Email *</label>
+              <input style={S.input} type="email" value={newEmail}
+                onChange={e => setNewEmail(e.target.value)}
+                placeholder="joao@empresa.com"/>
+            </div>
           </div>
-          <p style={{ fontSize:11, color:"#aaa", marginTop:8 }}>
-            O convite expira em 7 dias.
-          </p>
+
+          <div style={{ ...S.grid2, marginBottom:16 }}>
+            <div>
+              <label style={S.label}>Senha temporária *</label>
+              <div style={{ display:"flex", gap:6 }}>
+                <input
+                  style={{ ...S.input, flex:1, fontFamily:"monospace", letterSpacing:1 }}
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="mínimo 8 caracteres"/>
+                <button onClick={() => setShowPassword(s => !s)}
+                  style={{ ...S.btnSm, flexShrink:0 }}>
+                  {showPassword ? "🙈" : "👁"}
+                </button>
+                <button onClick={() => { const p = generatePassword(); setNewPassword(p); setShowPassword(true); }}
+                  style={{ ...S.btnSm, flexShrink:0 }} title="Gerar senha automática">
+                  🎲
+                </button>
+              </div>
+              <p style={{ fontSize:11, color:"#aaa", marginTop:4 }}>
+                Partilha esta senha com o utilizador de forma segura.
+              </p>
+            </div>
+            <div>
+              <label style={S.label}>Função</label>
+              <select value={newRole} onChange={e => setNewRole(e.target.value)} style={S.input}>
+                <option value="commercial">Comercial</option>
+                <option value="manager">Gestor</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display:"flex", justifyContent:"flex-end" }}>
+            <button style={{ ...S.btn, opacity:creating?0.6:1 }}
+              onClick={createUser} disabled={creating}>
+              {creating ? "A criar..." : "Criar utilizador"}
+            </button>
+          </div>
         </div>
       )}
 
