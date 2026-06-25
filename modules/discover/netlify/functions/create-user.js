@@ -1,5 +1,6 @@
 // netlify/functions/create-user.js
-// Cria utilizador com senha temporária via Supabase Auth Admin
+// Cria utilizador via signUp normal (sem Admin API)
+// Funciona no plano free do Supabase
 
 const { createClient } = require("@supabase/supabase-js");
 
@@ -31,64 +32,90 @@ exports.handler = async function(event) {
 
   const supabaseUrl    = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey        = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
     return { statusCode: 500, body: JSON.stringify({ error: "Env vars não configuradas" }) };
   }
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+  // Client admin para operações de DB
+  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // Client anon para signup (funciona no free tier)
+  const supabaseAnon = createClient(supabaseUrl, anonKey || serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
   try {
-    // 1. Cria utilizador no Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email:              email.trim().toLowerCase(),
+    // 1. Tenta primeiro via Admin API
+    let userId = null;
+    const { data: adminData, error: adminError } = await supabaseAdmin.auth.admin.createUser({
+      email:         email.trim().toLowerCase(),
       password,
-      email_confirm:      true, // confirma email automaticamente
-      user_metadata: {
-        full_name:  fullName,
-        tenant_id:  tenantId,
-        role,
-        must_change_password: true, // flag para forçar troca na primeira sessão
-      },
+      email_confirm: true,
+      user_metadata: { full_name: fullName, tenant_id: tenantId, role },
     });
 
-    if (authError) {
-      console.error("[create-user] Auth error:", authError.message);
-      return { statusCode: 400, body: JSON.stringify({ error: authError.message }) };
+    if (!adminError && adminData?.user?.id) {
+      userId = adminData.user.id;
+      console.log("[create-user] Criado via Admin API:", userId);
+    } else {
+      console.log("[create-user] Admin API falhou, tentando signUp:", JSON.stringify(adminError));
+
+      // 2. Fallback: signUp normal
+      const { data: signUpData, error: signUpError } = await supabaseAnon.auth.signUp({
+        email:    email.trim().toLowerCase(),
+        password,
+        options: {
+          data: { full_name: fullName, tenant_id: tenantId, role },
+        },
+      });
+
+      if (signUpError) {
+        console.error("[create-user] signUp error:", signUpError.message);
+        return { statusCode: 400, body: JSON.stringify({ error: signUpError.message }) };
+      }
+
+      userId = signUpData?.user?.id;
+      console.log("[create-user] Criado via signUp:", userId);
     }
 
-    const userId = authData.user.id;
-    console.log("[create-user] User criado:", userId, email);
+    if (!userId) {
+      return { statusCode: 400, body: JSON.stringify({ error: "Não foi possível criar o utilizador" }) };
+    }
 
-    // 2. Cria perfil
-    await supabase.from("profiles").upsert({
+    // 3. Cria perfil via admin client
+    await supabaseAdmin.from("profiles").upsert({
       id:        userId,
       full_name: fullName,
       email:     email.trim().toLowerCase(),
     }, { onConflict: "id" });
 
-    // 3. Associa ao tenant
-    const { error: tuError } = await supabase.from("tenant_users").insert({
-      tenant_id: tenantId,
-      user_id:   userId,
+    // 4. Associa ao tenant
+    const { error: tuError } = await supabaseAdmin.from("tenant_users").insert({
+      tenant_id:  tenantId,
+      user_id:    userId,
       role,
       invited_by: invitedBy,
     });
 
-    if (tuError) console.error("[create-user] tenant_users error:", tuError.message);
+    if (tuError) {
+      console.error("[create-user] tenant_users error:", tuError.message);
+      // Não falha — utilizador foi criado
+    }
 
-    // 4. Regista na tabela invitations para controlo
-    await supabase.from("invitations").insert({
-      tenant_id:  tenantId,
-      email:      email.trim().toLowerCase(),
+    // 5. Regista convite
+    await supabaseAdmin.from("invitations").insert({
+      tenant_id:   tenantId,
+      email:       email.trim().toLowerCase(),
       role,
-      token:      userId,
-      invited_by: invitedBy,
+      token:       userId,
+      invited_by:  invitedBy,
       accepted_at: new Date().toISOString(),
       expires_at:  new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-    }).catch(() => {}); // não falha se invitations der erro
+    }).catch(() => {});
 
     return {
       statusCode: 200,
